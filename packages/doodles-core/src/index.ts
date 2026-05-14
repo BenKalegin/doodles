@@ -10,15 +10,15 @@ export {
     withinYBounds,
     minus,
     center,
-} from "./bounds";
+} from "./bounds.js";
 
-export {type Id, ElementType, type ElementRef} from "./element";
+export {type Id, ElementType, type ElementRef} from "./element.js";
 
-export {PortAlignment} from "./port";
+export {PortAlignment} from "./port.js";
 
-export {FlowchartNodeKind} from "./flowchart";
+export {FlowchartNodeKind} from "./flowchart.js";
 
-export {type DiagramDisplay, defaultDiagramDisplay, type Diagram} from "./diagram";
+export {type DiagramDisplay, defaultDiagramDisplay, type Diagram} from "./diagram.js";
 
 export {
     type DiagramKind,
@@ -27,6 +27,6 @@ export {
     getKindConstraints,
     isKindRegistered,
     registerKindConstraints,
-} from "./kinds";
+} from "./kinds.js";
 
-export const DOODLES_VERSION = "0.1.0";
+export const DOODLES_VERSION = "0.1.1";

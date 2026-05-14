@@ -1,5 +1,5 @@
-import {type Coordinate, zeroCoordinate} from "./bounds";
-import type {ElementRef} from "./element";
+import {type Coordinate, zeroCoordinate} from "./bounds.js";
+import type {ElementRef} from "./element.js";
 
 export interface DiagramDisplay {
     width: number;

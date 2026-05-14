@@ -8,11 +8,11 @@ export {
     type OrderHint,
     applyAutoLayout,
     computeDisplaySize,
-} from "./autoLayout";
+} from "./autoLayout.js";
 
-export {applyFiligreeLayout} from "./filigreeLayout";
+export {applyFiligreeLayout} from "./filigreeLayout.js";
 
-export {canRelayoutStructure, relayoutStructure} from "./structureRelayout";
+export {canRelayoutStructure, relayoutStructure} from "./structureRelayout.js";
 
 export {
     type LaidOutDiagram,
@@ -25,4 +25,4 @@ export {
     type NodePorts,
     type LayoutFacade,
     layoutFor,
-} from "./layoutTesting";
+} from "./layoutTesting.js";

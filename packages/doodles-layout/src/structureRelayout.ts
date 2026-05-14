@@ -1,8 +1,8 @@
 import type {Diagram} from "@benkalegin/doodles-core";
 import {ElementType, FlowchartNodeKind, PortAlignment} from "@benkalegin/doodles-core";
-import type {ClusterDef, LayoutHints, LayoutLink, LayoutNode, OrderHint} from "./autoLayout";
-import {computeDisplaySize} from "./autoLayout";
-import {applyFiligreeLayout} from "./filigreeLayout";
+import type {ClusterDef, LayoutHints, LayoutLink, LayoutNode, OrderHint} from "./autoLayout.js";
+import {computeDisplaySize} from "./autoLayout.js";
+import {applyFiligreeLayout} from "./filigreeLayout.js";
 
 interface DiagramInternal {
     elements: { [id: string]: any };

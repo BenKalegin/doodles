@@ -1,4 +1,4 @@
-import {applyFiligreeLayout} from "./filigreeLayout";
+import {applyFiligreeLayout} from "./filigreeLayout.js";
 
 export type LayoutDirection = "TB" | "BT" | "LR" | "RL";
 

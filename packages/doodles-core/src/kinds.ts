@@ -7,7 +7,7 @@
  * minor releases add entries as other kinds migrate over from clouddiagram.
  */
 
-import {PortAlignment} from "./port";
+import {PortAlignment} from "./port.js";
 
 export type DiagramKind =
     | "flowchart"

@@ -1,5 +1,5 @@
 import {LAYERED_ALGORITHM_ID, layout, type INode} from "@benkalegin/filigree-api";
-import type {ClusterDef, LayoutHints, LayoutLink, LayoutNode, LayoutNodeBounds, OrderHint} from "./autoLayout";
+import type {ClusterDef, LayoutHints, LayoutLink, LayoutNode, LayoutNodeBounds, OrderHint} from "./autoLayout.js";
 
 const DEFAULT_RANK_SEP = 80;
 const DEFAULT_NODE_SEP = 60;
