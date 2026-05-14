@@ -1,13 +1,7 @@
+import type {LayoutDirection, LayoutHints} from "@benkalegin/doodles-core";
 import {applyFiligreeLayout} from "./filigreeLayout.js";
 
-export type LayoutDirection = "TB" | "BT" | "LR" | "RL";
-
-export interface LayoutHints {
-    direction?: LayoutDirection;
-    rankSep?: number;
-    nodeSep?: number;
-    edgeSep?: number;
-}
+export type {LayoutDirection, LayoutHints};
 
 export interface LayoutNodeBounds {
     x: number;

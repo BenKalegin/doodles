@@ -49,6 +49,9 @@ importers:
       '@benkalegin/doodles-core':
         specifier: workspace:*
         version: link:../doodles-core
+      '@benkalegin/doodles-layout':
+        specifier: workspace:*
+        version: link:../doodles-layout
       nanoid:
         specifier: ^3.3.12
         version: 3.3.12

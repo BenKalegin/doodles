@@ -1,2 +1,23 @@
-// @benkalegin/doodles-mermaid — Mermaid parser → Doodle.
-export {};
+export {
+    type MermaidIdGenerator,
+    createMermaidIdGenerator,
+    normalizeMermaidDeclaration,
+    mermaidSourceLines,
+    parseMermaidLayoutHints,
+} from "./mermaidImportUtils.js";
+
+export {
+    type MermaidImporter,
+    type MermaidDiagramKind,
+    type MermaidDiagramTypeDefinition,
+    type MermaidDiagramTypeRegistryEntry,
+} from "./mermaidImportTypes.js";
+
+export {
+    type StructureImportOut,
+    importMermaidFlowchartDiagram,
+    importMermaidStructureDiagram,
+    computeDisplaySize,
+} from "./mermaidStructureImporter.js";
+
+export {importMermaidSourceAsNote} from "./mermaidFallbackImporter.js";
