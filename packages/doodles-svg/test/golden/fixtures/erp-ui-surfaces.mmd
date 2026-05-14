@@ -1,0 +1,11 @@
+flowchart TB
+    A[All ERP UI surfaces] --> B{Usage frequency}
+    B -->|"Daily, hours per user"| C["<b>Operating screens</b><br>~10-20 per role"]
+    B -->|"Weekly, few users"| D["<b>Middle band</b><br>moderately used"]
+    B -->|"Rare, edge-case"| E["<b>Long tail</b><br>~3,000+ transactions"]
+    C --> F["Hand-crafted, dense, fast"]
+    D --> G["Templated generation"]
+    E --> H["Generated on demand"]
+    style C fill:#3a2d5f,stroke:#8b7fd6,color:#fff
+    style D fill:#3f2d1a,stroke:#d99c47,color:#fff
+    style E fill:#1e3f30,stroke:#5fb085,color:#fff

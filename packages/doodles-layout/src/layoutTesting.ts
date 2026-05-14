@@ -1,6 +1,23 @@
 import {type Bounds, center, type Coordinate, ElementType, PortAlignment} from "@benkalegin/doodles-core";
 
-export interface LaidOutDiagram {
+/**
+ * Two input shapes are accepted:
+ *  - The flat shape that doodles-mermaid's importer returns:
+ *      `{ nodes, ports?, elements, … }`
+ *  - The wrapped shape that consumers like clouddiagram's importDiagramAs produce:
+ *      `{ diagram: { nodes, ports? }, elements }`
+ *
+ * Both forms expose the same information; the wrapper just splits it.
+ */
+export type LaidOutDiagram = LaidOutDiagramFlat | LaidOutDiagramWrapped;
+
+export interface LaidOutDiagramFlat {
+    nodes: { [id: string]: { bounds: Bounds } };
+    ports?: { [id: string]: { alignment?: PortAlignment } };
+    elements: { [id: string]: any };
+}
+
+export interface LaidOutDiagramWrapped {
     diagram: {
         nodes: { [id: string]: { bounds: Bounds } };
         ports?: { [id: string]: { alignment?: PortAlignment } };
@@ -112,7 +129,10 @@ export interface LayoutFacade {
 }
 
 export function layoutFor(result: LaidOutDiagram): LayoutFacade {
-    const {diagram, elements} = result;
+    const diagram = ("diagram" in result && result.diagram !== undefined)
+        ? result.diagram
+        : (result as LaidOutDiagramFlat);
+    const elements = result.elements;
     const nodeIdx = buildIndex(elements, ElementType.ClassNode);
     const clusterIdx = buildIndex(elements, ElementType.Cluster);
 

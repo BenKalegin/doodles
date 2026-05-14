@@ -1,0 +1,21 @@
+graph TB
+    subgraph Ingestion["Ingestion Pipeline"]
+        direction TB
+        Upload[Document Upload]
+        Parse[Document Parser]
+        Chunk[Text Chunker]
+        Embed[Embedding]
+        Store1[Vector Store - docs]
+        Upload --> Parse --> Chunk --> Embed --> Store1
+    end
+    subgraph Query["Query Pipeline"]
+        direction TB
+        Query1[User Query]
+        Condense[Query Condenser]
+        Preflight[Preflight Analyzer]
+        PlanGen[Plan Generator]
+        Execute[DurableAgent]
+        Store2[Vector Store - queries]
+        Query1 --> Condense --> Preflight --> PlanGen --> Execute
+        Execute --> Store2
+    end

@@ -62,6 +62,9 @@ importers:
         specifier: workspace:*
         version: link:../doodles-core
     devDependencies:
+      '@benkalegin/doodles-layout':
+        specifier: workspace:*
+        version: link:../doodles-layout
       '@benkalegin/doodles-mermaid':
         specifier: workspace:*
         version: link:../doodles-mermaid

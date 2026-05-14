@@ -1,0 +1,6 @@
+flowchart TB
+    Start([Start]) --> Decide{Approved?}
+    Decide -->|yes| Process[Process Order]
+    Decide -->|no| Reject[Send Rejection]
+    Process --> End([Done])
+    Reject --> End
