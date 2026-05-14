@@ -1,0 +1,43 @@
+{
+  "name": "@benkalegin/doodles-svg",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "@benkalegin/doodles-core": "workspace:*"
+  },
+  "description": "Renders a laid-out Doodle to SVG with theme tokens.",
+  "license": "MIT",
+  "author": "Ben Kalegin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BenKalegin/doodles.git",
+    "directory": "packages/doodles-svg"
+  }
+}

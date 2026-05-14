@@ -1,0 +1,44 @@
+{
+  "name": "@benkalegin/doodles-mermaid",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "@benkalegin/doodles-core": "workspace:*",
+    "nanoid": "^3.3.12"
+  },
+  "description": "Mermaid parser → Doodle.",
+  "license": "MIT",
+  "author": "Ben Kalegin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BenKalegin/doodles.git",
+    "directory": "packages/doodles-mermaid"
+  }
+}
