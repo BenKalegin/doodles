@@ -1,6 +1,6 @@
 {
   "name": "@benkalegin/doodles-svg",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -31,6 +31,9 @@
   },
   "dependencies": {
     "@benkalegin/doodles-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@benkalegin/doodles-mermaid": "workspace:*"
   },
   "description": "Renders a laid-out Doodle to SVG with theme tokens.",
   "license": "MIT",
