@@ -21,3 +21,5 @@ export {
 } from "./mermaidStructureImporter.js";
 
 export {importMermaidSourceAsNote} from "./mermaidFallbackImporter.js";
+
+export {importMermaidFlowchartWithLayout} from "./mermaidWithLayout.js";
