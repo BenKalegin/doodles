@@ -17,41 +17,27 @@ export interface ThemeTokens {
     };
 }
 
-// Muted slate palette borrowed from filigree's reference SVGs: translucent
-// fills work against any host background (light or dark), strokes/text use
-// slate tones with enough contrast on both.
+// Default theme is color-free. `transparent` fills + `currentColor` strokes/text
+// let the host (axonize, clouddiagram) own the palette via the surrounding
+// `color:` CSS — same SVG works against light and dark backgrounds. Per-element
+// `colorSchema` overrides for highlights.
 const FONT = {
     family: "system-ui, -apple-system, 'Segoe UI', sans-serif",
     size: 14,
     lineHeight: 18,
 };
 
-export const defaultLightTheme: ThemeTokens = {
-    colors: {
-        background: "transparent",
-        nodeFill: "#64748b14",
-        nodeStroke: "#64748b",
-        nodeText: "#475569",
-        edgeStroke: "#94a3b8",
-        edgeText: "#64748b",
-        compoundFill: "transparent",
-        compoundStroke: "#64748b",
-        compoundLabel: "#475569",
-    },
-    font: FONT,
+const NEUTRAL_COLORS = {
+    background: "transparent",
+    nodeFill: "transparent",
+    nodeStroke: "currentColor",
+    nodeText: "currentColor",
+    edgeStroke: "currentColor",
+    edgeText: "currentColor",
+    compoundFill: "transparent",
+    compoundStroke: "currentColor",
+    compoundLabel: "currentColor",
 };
 
-export const defaultDarkTheme: ThemeTokens = {
-    colors: {
-        background: "transparent",
-        nodeFill: "#64748b14",
-        nodeStroke: "#64748b",
-        nodeText: "#94a3b8",
-        edgeStroke: "#94a3b8",
-        edgeText: "#94a3b8",
-        compoundFill: "transparent",
-        compoundStroke: "#64748b",
-        compoundLabel: "#cbd5e1",
-    },
-    font: FONT,
-};
+export const defaultLightTheme: ThemeTokens = {colors: NEUTRAL_COLORS, font: FONT};
+export const defaultDarkTheme: ThemeTokens = {colors: NEUTRAL_COLORS, font: FONT};

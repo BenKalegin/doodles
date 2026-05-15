@@ -11,6 +11,7 @@ import {
     RouteStyle,
     TipStyle,
     defaultColorSchema,
+    neutralColorSchema,
     createClassMember,
     minimumClassNodeHeight,
     normalizeClassAnnotation,
@@ -234,7 +235,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
             type: ElementType.ClassNode,
             text: effectiveLabel,
             ports: [],
-            colorSchema: defaultColorSchema,
+            colorSchema: neutralColorSchema,
             flowchartKind: flowchartMode ? (flowchartKind ?? FlowchartNodeKind.Process) : undefined
         } as NodeState;
 
@@ -335,7 +336,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
             tipStyle2,
             routeStyle: flowchartMode ? RouteStyle.OrthogonalSquare : RouteStyle.OrthogonalRounded,
             cornerStyle: CornerStyle.Straight,
-            colorSchema: defaultColorSchema,
+            colorSchema: neutralColorSchema,
             text: edgeLabel?.trim() || undefined
         } as LinkState;
 
@@ -666,7 +667,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
             type: ElementType.Cluster,
             text: subgraphLabels[clusterId] ?? clusterId,
             ports: [],
-            colorSchema: defaultColorSchema,
+            colorSchema: neutralColorSchema,
             memberNodeIds: clusterMembers[clusterId] ?? []
         } as NodeState;
     }

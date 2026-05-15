@@ -1,5 +1,17 @@
 import type {ColorSchema, LineStyle} from "./types.js";
 
+/**
+ * Color-free schema. SVG accepts these as paint values: `transparent` for fill
+ * (the host background shows through), `currentColor` for stroke/text (the host
+ * controls color via the surrounding `color:` CSS). Use this when importing
+ * un-styled sources (e.g. plain Mermaid) so renders don't impose a palette.
+ */
+export const neutralColorSchema: ColorSchema = {
+    strokeColor: "currentColor",
+    fillColor: "transparent",
+    textColor: "currentColor",
+};
+
 export const defaultColorSchema: ColorSchema = {
     strokeColor: "#deb887",
     fillColor: "#FFF8DC",

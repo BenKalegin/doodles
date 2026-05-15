@@ -64,6 +64,7 @@ export {
 
 export {
     defaultColorSchema,
+    neutralColorSchema,
     colorSchemaList,
     lineStyleList,
     defaultLineStyle,

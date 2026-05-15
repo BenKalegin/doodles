@@ -23,6 +23,24 @@ describe("renderSvg", () => {
         expect(rects).toBe(2);
     });
 
+    it("does not inline absolute colors on nodes/edges when Mermaid source has no styling", async () => {
+        // Mermaid input with no styling: the host (axonize, clouddiagram) owns the
+        // palette via CSS. Inline hex/rgb fill or stroke would override that — only
+        // transparent / currentColor / none are acceptable for unstyled elements.
+        const base = createDoodleForType(ElementType.FlowchartDiagram, "t");
+        const d = await importMermaidFlowchartDiagram(
+            base,
+            "flowchart TB\nA[Alpha] --> B[Beta]\nB --> C{Choose}"
+        );
+        const svg = renderSvg(d as any);
+        // Strip <defs>...</defs> — the arrow marker legitimately fills the arrowhead.
+        const body = svg.replace(/<defs\b[\s\S]*?<\/defs>/g, "");
+        const offenders = (body.match(/\b(?:fill|stroke)="[^"]+"/g) ?? []).filter(
+            attr => !/="(?:none|transparent|currentColor|inherit)"/.test(attr)
+        );
+        expect(offenders).toEqual([]);
+    });
+
     it("renders a diamond polygon for Decision nodes", async () => {
         const base = createDoodleForType(ElementType.FlowchartDiagram, "t");
         const d = await importMermaidFlowchartDiagram(base, "flowchart TB\nA --> B{Choose}\nB --> C");
