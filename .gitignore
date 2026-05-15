@@ -12,3 +12,8 @@ coverage/
 .env.*
 !.env.example
 *.log
+
+# Claude Code: ignore user-private settings, allow team-shared workflow files
+.claude/*
+!.claude/skills/
+!.claude/commands/
