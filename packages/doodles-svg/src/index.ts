@@ -72,13 +72,43 @@ export function renderSvg(diagram: RenderableDoodle, options: RenderOptions = {}
 // ── Cluster ──────────────────────────────────────────────────────────────────
 
 const CLUSTER_LABEL_HEIGHT = 22;
+const CLUSTER_RX = 6;
+
+// Subtle fill opacities for neutral (currentColor) fills. The exact values
+// match the original transparent-overlay look (~0x33 alpha for headers, ~0x10
+// for bodies on top of any host background).
+const NEUTRAL_NODE_FILL_OPACITY = 0.06;
+const NEUTRAL_CLUSTER_FILL_OPACITY = 0.04;
+const NEUTRAL_CLUSTER_HEADER_OPACITY = 0.08;
+
+// Convert a paint value into SVG attrs. A `transparent` fill becomes a faint
+// `currentColor` overlay so neutral nodes/clusters get a visible backdrop on
+// any host background. Concrete colors pass through unchanged.
+function fillAttrs(rawFill: string, neutralOpacity: number): string {
+    if (rawFill === "transparent") {
+        return `fill="currentColor" fill-opacity="${neutralOpacity}"`;
+    }
+    return `fill="${rawFill}"`;
+}
+
+// Path for a rect with rounded top corners and square bottom — used for the
+// cluster header strip so it sits flush against the parent's rounded outline.
+function topRoundedRectPath(x: number, y: number, w: number, h: number, rx: number): string {
+    return `M${x + rx},${y} L${x + w - rx},${y} Q${x + w},${y} ${x + w},${y + rx} L${x + w},${y + h} L${x},${y + h} L${x},${y + rx} Q${x},${y} ${x + rx},${y} Z`;
+}
 
 function renderCluster(b: Bounds, label: string, theme: ThemeTokens): string {
-    const rect = `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="6" fill="${theme.colors.compoundFill}" stroke="${theme.colors.compoundStroke}" />`;
+    const bodyFill = fillAttrs(theme.colors.compoundFill, NEUTRAL_CLUSTER_FILL_OPACITY);
+    const rect = `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="${CLUSTER_RX}" ${bodyFill} stroke="${theme.colors.compoundStroke}" />`;
+    // Header strip — only emitted for neutral clusters; an explicit compoundFill
+    // already provides its own backdrop and adding more would muddy it.
+    const header = theme.colors.compoundFill === "transparent" && label
+        ? `<path d="${topRoundedRectPath(b.x, b.y, b.width, CLUSTER_LABEL_HEIGHT, CLUSTER_RX)}" fill="currentColor" fill-opacity="${NEUTRAL_CLUSTER_HEADER_OPACITY}" />`
+        : "";
     const labelText = label
         ? `<text x="${b.x + b.width / 2}" y="${b.y + CLUSTER_LABEL_HEIGHT / 2 + 4}" text-anchor="middle" dominant-baseline="central" font-family="${xmlEscape(theme.font.family)}" font-size="${theme.font.size}" font-weight="bold" fill="${theme.colors.compoundLabel}">${xmlEscape(label)}</text>`
         : "";
-    return rect + labelText;
+    return rect + header + labelText;
 }
 
 // ── Node ─────────────────────────────────────────────────────────────────────
@@ -95,16 +125,17 @@ function renderNode(el: any, b: Bounds, theme: ThemeTokens): string {
 }
 
 function nodeShape(kind: FlowchartNodeKind, b: Bounds, fill: string, stroke: string): string {
+    const paint = fillAttrs(fill, NEUTRAL_NODE_FILL_OPACITY);
     if (kind === FlowchartNodeKind.Decision) {
         const cx = b.x + b.width / 2;
         const cy = b.y + b.height / 2;
         const points = `${cx},${b.y} ${b.x + b.width},${cy} ${cx},${b.y + b.height} ${b.x},${cy}`;
-        return `<polygon points="${points}" fill="${fill}" stroke="${stroke}" />`;
+        return `<polygon points="${points}" ${paint} stroke="${stroke}" />`;
     }
     if (kind === FlowchartNodeKind.InputOutput) {
         const skew = Math.min(b.width * 0.18, 22);
         const points = `${b.x + skew},${b.y} ${b.x + b.width},${b.y} ${b.x + b.width - skew},${b.y + b.height} ${b.x},${b.y + b.height}`;
-        return `<polygon points="${points}" fill="${fill}" stroke="${stroke}" />`;
+        return `<polygon points="${points}" ${paint} stroke="${stroke}" />`;
     }
     const isTerminator = kind === FlowchartNodeKind.Terminator;
     const isC4 = kind === FlowchartNodeKind.C4Person
@@ -116,7 +147,7 @@ function nodeShape(kind: FlowchartNodeKind, b: Bounds, fill: string, stroke: str
         ? Math.min(b.height * 0.4, b.width * 0.25)
         : isTerminator ? 26 : (isC4 ? 10 : 4);
     const dashAttr = isC4 ? ` stroke-dasharray="6 3"` : "";
-    return `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="${cornerRadius}" fill="${fill}" stroke="${stroke}"${dashAttr} />`;
+    return `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="${cornerRadius}" ${paint} stroke="${stroke}"${dashAttr} />`;
 }
 
 function renderNodeText(el: any, b: Bounds, theme: ThemeTokens, color: string): string {
