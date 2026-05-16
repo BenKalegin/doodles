@@ -24,5 +24,6 @@ export {
     type ClusterAssert,
     type NodePorts,
     type LayoutFacade,
+    type LayoutForOptions,
     layoutFor,
 } from "./layoutTesting.js";

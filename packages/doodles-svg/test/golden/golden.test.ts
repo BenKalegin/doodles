@@ -2,11 +2,11 @@ import {readFileSync, readdirSync} from "node:fs";
 import {dirname, join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {describe, it, beforeAll, expect} from "vitest";
-import {ElementType} from "@benkalegin/doodles-core";
+import {ElementType, PortAlignment} from "@benkalegin/doodles-core";
 import {layoutFor, type LayoutFacade} from "@benkalegin/doodles-layout";
-import {importMermaidFlowchartDiagram} from "@benkalegin/doodles-mermaid";
+import {importMermaidFlowchartWithLayout} from "@benkalegin/doodles-mermaid";
 import {createDoodleForType} from "../fixtures.js";
-import {renderSvg} from "../../src/index.js";
+import {renderSvg, routeEdges, defaultLightTheme} from "../../src/index.js";
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -32,8 +32,9 @@ interface Loaded {
 async function loadFixture(name: string): Promise<Loaded> {
     const source = readFileSync(join(FIXTURES_DIR, `${name}.mmd`), "utf8");
     const base = createDoodleForType(ElementType.FlowchartDiagram, `golden-${name}`);
-    const diagram = await importMermaidFlowchartDiagram(base, source);
-    const L = layoutFor(diagram as never);
+    const diagram = await importMermaidFlowchartWithLayout(base, source);
+    const routes = routeEdges(diagram as never, defaultLightTheme);
+    const L = layoutFor(diagram as never, {routes});
     const svg = renderSvg(diagram as never);
     return {L, svg};
 }
@@ -94,6 +95,26 @@ describe("golden: erp-ui-surfaces", () => {
         loaded.L.edge({fromText: "Usage frequency", toText: "Operating screens"}).hasLabel("Daily, hours per user");
         loaded.L.edge({fromText: "Usage frequency", toText: "Middle band"}).hasLabel("Weekly, few users");
         loaded.L.edge({fromText: "Usage frequency", toText: "Long tail"}).hasLabel("Rare, edge-case");
+    });
+
+    // ── Render-quality regressions (currently red — track filigree/doodles fixes) ──
+
+    it("no edge passes through a non-endpoint node", () => {
+        loaded.L.edges().noNodeIntersection();
+    });
+
+    it("no two edge labels overlap", () => {
+        loaded.L.edges().noLabelOverlap();
+    });
+
+    it("ancestor chain is centered over the three children", () => {
+        const branches = ["Operating screens", "Middle band", "Long tail"];
+        loaded.L.node("All ERP UI surfaces").centeredOver(branches);
+        loaded.L.node("Usage frequency").centeredOver(branches);
+    });
+
+    it("all three diamond branches leave from the bottom face", () => {
+        loaded.L.node("Usage frequency").outgoingFromSide(PortAlignment.Bottom);
     });
 
     it("svg snapshot", () => {

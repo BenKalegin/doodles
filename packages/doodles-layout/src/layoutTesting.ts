@@ -1,4 +1,12 @@
-import {type Bounds, center, type Coordinate, ElementType, PortAlignment} from "@benkalegin/doodles-core";
+import {type Bounds, center, type Coordinate, type EdgeRoute, ElementType, PortAlignment} from "@benkalegin/doodles-core";
+
+// Default tolerance for centroid/centered comparisons in pixels. Picks up
+// rounding (sub-pixel layout coords) without masking real drift.
+const DEFAULT_CENTERED_TOLERANCE_PX = 4;
+// Inset applied when testing "does a segment cross a node interior" — keeps
+// segments that graze a node's perimeter from registering as an intersection
+// (port attach points live exactly on the perimeter by design).
+const NODE_INTERIOR_INSET_PX = 0.5;
 
 /**
  * Two input shapes are accepted:
@@ -74,6 +82,49 @@ function segmentsIntersect(a1: Coordinate, a2: Coordinate, b1: Coordinate, b2: C
     return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
+/**
+ * Liang–Barsky segment vs. axis-aligned rectangle clip. Returns true when the
+ * segment crosses the rectangle's interior with non-zero length. Endpoints
+ * lying exactly on a rectangle edge are not considered an intersection — the
+ * caller insets the rect slightly so port attach points (which sit on a node's
+ * perimeter by construction) don't trigger a false positive.
+ */
+function segmentEntersRect(p1: Coordinate, p2: Coordinate, rect: Bounds): boolean {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const p = [-dx, dx, -dy, dy];
+    const q = [
+        p1.x - rect.x,
+        rect.x + rect.width - p1.x,
+        p1.y - rect.y,
+        rect.y + rect.height - p1.y,
+    ];
+    let t0 = 0;
+    let t1 = 1;
+    for (let i = 0; i < 4; i++) {
+        if (p[i] === 0) {
+            if (q[i]! < 0) return false;
+            continue;
+        }
+        const r = q[i]! / p[i]!;
+        if (p[i]! < 0) t0 = Math.max(t0, r);
+        else t1 = Math.min(t1, r);
+        if (t0 > t1) return false;
+    }
+    return t1 > t0;
+}
+
+function insetBounds(b: Bounds, inset: number): Bounds {
+    return {x: b.x + inset, y: b.y + inset, width: b.width - inset * 2, height: b.height - inset * 2};
+}
+
+function rectsOverlap(a: Bounds, b: Bounds): boolean {
+    return a.x < b.x + b.width
+        && b.x < a.x + a.width
+        && a.y < b.y + b.height
+        && b.y < a.y + a.height;
+}
+
 export interface NodeAssert {
     rightOf(...others: string[]): NodeAssert;
     leftOf(...others: string[]): NodeAssert;
@@ -83,8 +134,14 @@ export interface NodeAssert {
     sameColAs(...others: string[]): NodeAssert;
     centeredHorizontallyWith(other: string, tol?: number): NodeAssert;
     centeredVerticallyWith(other: string, tol?: number): NodeAssert;
+    /** Self's centerX equals the mean centerX of the named children, within `tol` px. Distinguishes "centered over a group" from pair-wise alignment. */
+    centeredOver(children: string[], tol?: number): NodeAssert;
     widthRelativeTo(other: string, range: { min: number; max: number }): NodeAssert;
     insideCluster(text: string): NodeAssert;
+    /** Every outgoing edge from this node attaches on the given side (PortAlignment). */
+    outgoingFromSide(side: PortAlignment): NodeAssert;
+    /** Every incoming edge to this node attaches on the given side. */
+    incomingFromSide(side: PortAlignment): NodeAssert;
 }
 
 export interface NodesAssert {
@@ -106,6 +163,10 @@ export interface EdgeAssert {
 export interface EdgesAssert {
     noCrossings(opts?: { max?: number }): EdgesAssert;
     count(n: number): EdgesAssert;
+    /** No routed edge segment crosses the interior of a non-endpoint node. Requires routes supplied to `layoutFor`. */
+    noNodeIntersection(): EdgesAssert;
+    /** No two edge labels overlap (AABB check). Requires routes supplied to `layoutFor`. */
+    noLabelOverlap(): EdgesAssert;
 }
 
 export interface ClusterAssert {
@@ -128,7 +189,16 @@ export interface LayoutFacade {
     distinctRowCount(tol?: number): number;
 }
 
-export function layoutFor(result: LaidOutDiagram): LayoutFacade {
+export interface LayoutForOptions {
+    /**
+     * Routed edges (polyline + label box) — required for `noNodeIntersection`
+     * and `noLabelOverlap`. Supplied by the consumer because routing is owned
+     * by the renderer, not the layout step.
+     */
+    routes?: EdgeRoute[];
+}
+
+export function layoutFor(result: LaidOutDiagram, options: LayoutForOptions = {}): LayoutFacade {
     const diagram = ("diagram" in result && result.diagram !== undefined)
         ? result.diagram
         : (result as LaidOutDiagramFlat);
@@ -241,17 +311,30 @@ export function layoutFor(result: LaidOutDiagram): LayoutFacade {
                 }
                 return api;
             },
-            centeredHorizontallyWith(other, tol = 4) {
+            centeredHorizontallyWith(other, tol = DEFAULT_CENTERED_TOLERANCE_PX) {
                 const ob = boundsOf(findNode(other));
                 if (Math.abs(centerX(sb) - centerX(ob)) > tol) {
                     throw new Error(`Expected "${text}" centered with "${other}" within ${tol}px`);
                 }
                 return api;
             },
-            centeredVerticallyWith(other, tol = 4) {
+            centeredVerticallyWith(other, tol = DEFAULT_CENTERED_TOLERANCE_PX) {
                 const ob = boundsOf(findNode(other));
                 if (Math.abs(centerY(sb) - centerY(ob)) > tol) {
                     throw new Error(`Expected "${text}" vertically centered with "${other}" within ${tol}px`);
+                }
+                return api;
+            },
+            centeredOver(children, tol = DEFAULT_CENTERED_TOLERANCE_PX) {
+                if (children.length === 0) throw new Error("centeredOver([]) needs at least one child");
+                const childrenCenters = children.map(t => centerX(boundsOf(findNode(t))));
+                const mean = childrenCenters.reduce((a, b) => a + b, 0) / childrenCenters.length;
+                const delta = Math.abs(centerX(sb) - mean);
+                if (delta > tol) {
+                    throw new Error(
+                        `Expected "${text}" centered over [${children.join(", ")}] ` +
+                        `(centerX=${centerX(sb).toFixed(1)}, group mean=${mean.toFixed(1)}, Δ=${delta.toFixed(1)}, tol=${tol})`
+                    );
                 }
                 return api;
             },
@@ -270,9 +353,43 @@ export function layoutFor(result: LaidOutDiagram): LayoutFacade {
                     throw new Error(`Expected "${text}" inside cluster "${clusterText}"`);
                 }
                 return api;
+            },
+            outgoingFromSide(side) {
+                assertEdgesFromSide(self, side, "outgoing", text);
+                return api;
+            },
+            incomingFromSide(side) {
+                assertEdgesFromSide(self, side, "incoming", text);
+                return api;
             }
         };
         return api;
+    }
+
+    function assertEdgesFromSide(
+        self: any,
+        side: PortAlignment,
+        direction: "incoming" | "outgoing",
+        text: string,
+    ): void {
+        const ports = diagram.ports ?? {};
+        const offending: PortAlignment[] = [];
+        for (const link of links) {
+            const ep = endpointsOf(link);
+            if (!ep) continue;
+            const [a, b] = ep;
+            const matches = direction === "outgoing" ? a.id === self.id : b.id === self.id;
+            if (!matches) continue;
+            const portId = direction === "outgoing" ? link.port1 : link.port2;
+            const align = ports[portId]?.alignment;
+            if (align !== undefined && align !== side) offending.push(align);
+        }
+        if (offending.length > 0) {
+            throw new Error(
+                `Expected all ${direction} edges of "${text}" to use ${PortAlignment[side]} side, ` +
+                `found ${offending.length} on [${offending.map(a => PortAlignment[a]).join(", ")}]`
+            );
+        }
     }
 
     function nodesAssert(...texts: string[]): NodesAssert {
@@ -377,6 +494,52 @@ export function layoutFor(result: LaidOutDiagram): LayoutFacade {
             count(n) {
                 if (links.length !== n) {
                     throw new Error(`Expected ${n} edges, got ${links.length}`);
+                }
+                return api;
+            },
+            noNodeIntersection() {
+                const routes = options.routes;
+                if (!routes) throw new Error("noNodeIntersection() requires routes supplied to layoutFor()");
+                const offenders: string[] = [];
+                // Don't skip source/target — the inset keeps perimeter attach points
+                // out of "interior" but flags polylines that re-enter their own
+                // endpoint node's bbox (e.g., port on wrong side routing back across).
+                for (const route of routes) {
+                    for (let i = 1; i < route.polyline.length; i++) {
+                        const p1 = route.polyline[i - 1]!;
+                        const p2 = route.polyline[i]!;
+                        for (const n of nodes) {
+                            const interior = insetBounds(boundsOf(n), NODE_INTERIOR_INSET_PX);
+                            if (interior.width <= 0 || interior.height <= 0) continue;
+                            if (segmentEntersRect(p1, p2, interior)) {
+                                offenders.push(
+                                    `edge "${route.label || route.edgeId}" crosses node "${String(n.text ?? n.id)}" ` +
+                                    `(segment ${i} of polyline)`
+                                );
+                            }
+                        }
+                    }
+                }
+                if (offenders.length > 0) {
+                    throw new Error(`Edge-node intersections:\n  ${offenders.join("\n  ")}`);
+                }
+                return api;
+            },
+            noLabelOverlap() {
+                const routes = options.routes;
+                if (!routes) throw new Error("noLabelOverlap() requires routes supplied to layoutFor()");
+                const labeled = routes.filter((r): r is EdgeRoute & {labelBox: Bounds} => r.labelBox !== undefined);
+                const overlaps: string[] = [];
+                for (let i = 0; i < labeled.length; i++) {
+                    for (let j = i + 1; j < labeled.length; j++) {
+                        const a = labeled[i]!, b = labeled[j]!;
+                        if (rectsOverlap(a.labelBox, b.labelBox)) {
+                            overlaps.push(`"${a.label}" overlaps "${b.label}"`);
+                        }
+                    }
+                }
+                if (overlaps.length > 0) {
+                    throw new Error(`Label overlaps:\n  ${overlaps.join("\n  ")}`);
                 }
                 return api;
             }

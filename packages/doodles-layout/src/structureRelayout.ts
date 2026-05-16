@@ -143,14 +143,18 @@ function adjustPortAlignments(
         const ty = tb.y + tb.height / 2;
         const dx = tx - sx;
         const dy = ty - sy;
+        const vertical = hints.direction === "TB" || hints.direction === "BT";
         let srcAlign: PortAlignment;
         let tgtAlign: PortAlignment;
-        if (Math.abs(dx) >= Math.abs(dy)) {
-            srcAlign = dx >= 0 ? PortAlignment.Right : PortAlignment.Left;
-            tgtAlign = dx >= 0 ? PortAlignment.Left : PortAlignment.Right;
-        } else {
+        // In directional layouts the natural axis follows the flow, not the
+        // larger of |dx|/|dy|. Picking sideways alignment when target is below
+        // a source produced edges that re-entered the source bbox.
+        if (vertical) {
             srcAlign = dy >= 0 ? PortAlignment.Bottom : PortAlignment.Top;
             tgtAlign = dy >= 0 ? PortAlignment.Top : PortAlignment.Bottom;
+        } else {
+            srcAlign = dx >= 0 ? PortAlignment.Right : PortAlignment.Left;
+            tgtAlign = dx >= 0 ? PortAlignment.Left : PortAlignment.Right;
         }
         assignments.push({
             port1: el.port1, port2: el.port2,
@@ -178,10 +182,7 @@ function applyDecisionNodeConvention(
 ): void {
     const vertical = hints.direction === "TB" || hints.direction === "BT";
     const inputSide = vertical ? PortAlignment.Top : PortAlignment.Left;
-    const mainOutputSide = vertical ? PortAlignment.Bottom : PortAlignment.Right;
-    const branchSides: PortAlignment[] = vertical
-        ? [PortAlignment.Right, PortAlignment.Left]
-        : [PortAlignment.Bottom, PortAlignment.Top];
+    const outputSide = vertical ? PortAlignment.Bottom : PortAlignment.Right;
 
     const incomingByNode: { [nodeId: string]: LinkAssignment[] } = {};
     const outgoingByNode: { [nodeId: string]: LinkAssignment[] } = {};
@@ -193,17 +194,12 @@ function applyDecisionNodeConvention(
     for (const el of Object.values(dia.elements)) {
         if (el?.type !== ElementType.ClassNode) continue;
         if (el.flowchartKind !== FlowchartNodeKind.Decision) continue;
-        const incoming = incomingByNode[el.id] ?? [];
-        const outgoing = outgoingByNode[el.id] ?? [];
 
-        for (const a of incoming) a.tgtAlign = inputSide;
-
-        const ranked = [...outgoing].sort((a, b) =>
-            vertical ? (b.dy - a.dy) : (b.dx - a.dx)
-        );
-        for (let i = 0; i < ranked.length; i++) {
-            ranked[i]!.srcAlign = i === 0 ? mainOutputSide : branchSides[(i - 1) % branchSides.length]!;
-        }
+        for (const a of incomingByNode[el.id] ?? []) a.tgtAlign = inputSide;
+        // All outgoing branches share the main output face; distribution along
+        // that face (port ratios) is left to distributePortsAlongSides. Fanning
+        // branches across Right/Left/etc. produced edge-through-self routing.
+        for (const a of outgoingByNode[el.id] ?? []) a.srcAlign = outputSide;
     }
 }
 

@@ -16,6 +16,8 @@ export {type Id, ElementType, type ElementRef} from "./element.js";
 
 export {PortAlignment} from "./port.js";
 
+export {type EdgeRoute} from "./edgeRoute.js";
+
 export {FlowchartNodeKind} from "./flowchart.js";
 
 export {type DiagramDisplay, defaultDiagramDisplay, type Diagram} from "./diagram.js";
