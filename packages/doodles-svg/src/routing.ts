@@ -183,29 +183,43 @@ function sameFaceDetour(
         const outerX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
         const aboveY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
         const belowY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
-        const sideY = Math.abs(aboveY - from.y) <= Math.abs(belowY - from.y) ? aboveY : belowY;
+        const sideY = pickDetourSide(from.y, to.y, aboveY, belowY);
         return [from, {x: outerX, y: from.y}, {x: outerX, y: sideY}, {x: to.x, y: sideY}, to];
     }
     if (face === PortAlignment.Left) {
         const outerX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
         const aboveY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
         const belowY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
-        const sideY = Math.abs(aboveY - from.y) <= Math.abs(belowY - from.y) ? aboveY : belowY;
+        const sideY = pickDetourSide(from.y, to.y, aboveY, belowY);
         return [from, {x: outerX, y: from.y}, {x: outerX, y: sideY}, {x: to.x, y: sideY}, to];
     }
     if (face === PortAlignment.Top) {
         const outerY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
         const leftX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
         const rightX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
-        const sideX = Math.abs(leftX - from.x) <= Math.abs(rightX - from.x) ? leftX : rightX;
+        const sideX = pickDetourSide(from.x, to.x, leftX, rightX);
         return [from, {x: from.x, y: outerY}, {x: sideX, y: outerY}, {x: sideX, y: to.y}, to];
     }
     // Bottom
     const outerY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
     const leftX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
     const rightX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
-    const sideX = Math.abs(leftX - from.x) <= Math.abs(rightX - from.x) ? leftX : rightX;
+    const sideX = pickDetourSide(from.x, to.x, leftX, rightX);
     return [from, {x: from.x, y: outerY}, {x: sideX, y: outerY}, {x: sideX, y: to.y}, to];
+}
+
+/**
+ * For a U-detour, pick which side of the bbox pair to traverse along. Picks
+ * whichever option produces the shorter total cross-axis travel
+ * (|side − from| + |to − side|) — so a back-edge inside one row goes the
+ * conventional way (above for horizontal layouts) while a cross-row edge
+ * crosses through the gap between rows toward the target instead of looping
+ * the long way around.
+ */
+function pickDetourSide(from: number, to: number, optionA: number, optionB: number): number {
+    const costA = Math.abs(optionA - from) + Math.abs(to - optionA);
+    const costB = Math.abs(optionB - from) + Math.abs(to - optionB);
+    return costA <= costB ? optionA : optionB;
 }
 
 function isVerticalAlignment(a: PortAlignment | undefined): boolean {

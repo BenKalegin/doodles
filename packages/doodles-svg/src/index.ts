@@ -85,15 +85,26 @@ const NEUTRAL_CLUSTER_HEADER_OPACITY = 0.08;
 // the color" (~0.15) and "it's a solid block" (1.0).
 const EXPLICIT_NODE_FILL_OPACITY = 0.22;
 
+// Eight-character hex (#rrggbbaa) and rgba()/hsla() already encode their own
+// alpha — applying our explicit-opacity on top would double-multiply and make
+// the color virtually invisible.
+const HEX_WITH_ALPHA = /^#[0-9a-f]{8}$/i;
+const COLOR_WITH_ALPHA = /^(rgba|hsla)\s*\(/i;
+
+function hasBuiltInAlpha(color: string): boolean {
+    return HEX_WITH_ALPHA.test(color) || COLOR_WITH_ALPHA.test(color);
+}
+
 // Convert a paint value into SVG attrs. A `transparent` fill becomes a faint
 // `currentColor` overlay so neutral nodes/clusters get a visible backdrop on
 // any host background. Explicit colors render at reduced opacity so they
-// behave as tints rather than solid blocks.
+// behave as tints rather than solid blocks — unless the color already carries
+// its own alpha channel, in which case the author already chose the strength.
 function fillAttrs(rawFill: string, neutralOpacity: number, explicitOpacity = 1): string {
     if (rawFill === "transparent") {
         return `fill="currentColor" fill-opacity="${neutralOpacity}"`;
     }
-    if (explicitOpacity >= 1) return `fill="${rawFill}"`;
+    if (explicitOpacity >= 1 || hasBuiltInAlpha(rawFill)) return `fill="${rawFill}"`;
     return `fill="${rawFill}" fill-opacity="${explicitOpacity}"`;
 }
 
