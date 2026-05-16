@@ -75,6 +75,17 @@ function parseLine(line: string): RichLine {
     return {spans};
 }
 
+export interface RichTextOptions {
+    /**
+     * When set, draws each glyph with a stroke halo of this width so the text
+     * "knocks out" anything drawn behind it (typically an edge line). The halo
+     * color comes from the `--doodles-label-halo` CSS variable on a host
+     * ancestor; absent that variable the stroke is transparent and the halo
+     * is a no-op.
+     */
+    haloStrokeWidth?: number;
+}
+
 /**
  * Render a parsed rich-text block as a `<text>` element centered at (`cx`, `cy`)
  * with the given font + line-height. Multi-line text grows symmetrically
@@ -87,7 +98,8 @@ export function richTextSvg(
     fontFamily: string,
     fontSize: number,
     lineHeight: number,
-    color: string
+    color: string,
+    options: RichTextOptions = {}
 ): string {
     if (lines.length === 0 || (lines.length === 1 && lines[0]!.spans.every(s => s.text === ""))) {
         return "";
@@ -108,5 +120,9 @@ export function richTextSvg(
         return `<tspan x="${cx}" dy="${dy}">${spans}</tspan>`;
     }).join("");
 
-    return `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-family="${xmlEscape(fontFamily)}" font-size="${fontSize}" fill="${color}">${tspans}</text>`;
+    const haloAttrs = options.haloStrokeWidth
+        ? ` paint-order="stroke" stroke-width="${options.haloStrokeWidth}" stroke-linejoin="round" style="stroke: var(--doodles-label-halo, transparent)"`
+        : "";
+
+    return `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-family="${xmlEscape(fontFamily)}" font-size="${fontSize}" fill="${color}"${haloAttrs}>${tspans}</text>`;
 }

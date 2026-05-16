@@ -166,7 +166,7 @@ for repo in "${REPOS_ORDER[@]}"; do
     [ -z "$up_v" ] && continue
     up_name="${PUBLIC_NAME[$u]}"
     while IFS= read -r f; do
-      sed -i '' "s|\"$up_name\": \"\^[0-9.]\+\"|\"$up_name\": \"^$up_v\"|" "$f"
+      sed -i '' "s|\"$up_name\": \"\^[0-9.]\{1,\}\"|\"$up_name\": \"^$up_v\"|" "$f"
     done < <(find . -name "package.json" -not -path "*/node_modules/*" -not -path "*/dist/*")
     echo "  ↳ bumped $up_name → ^$up_v"
   done
