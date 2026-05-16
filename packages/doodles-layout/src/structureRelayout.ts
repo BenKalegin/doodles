@@ -290,6 +290,13 @@ function adjustPortAlignments(
     return ports;
 }
 
+// A row-wrapped LR layout puts some targets directly below their source. Any
+// |dy| past this threshold (roughly half of a typical row height) is treated
+// as "different row" and the Decision-convention switches the source face to
+// the perpendicular axis so the edge exits toward the target row instead of
+// looping the long way around the diagram.
+const CROSS_ROW_DY_THRESHOLD_PX = 40;
+
 function applyDecisionNodeConvention(
     dia: Diagram & DiagramInternal,
     assignments: LinkAssignment[],
@@ -298,7 +305,7 @@ function applyDecisionNodeConvention(
     const vertical = hints.direction === LayoutDirection.TopToBottom
         || hints.direction === LayoutDirection.BottomToTop;
     const inputSide = vertical ? PortAlignment.Top : PortAlignment.Left;
-    const outputSide = vertical ? PortAlignment.Bottom : PortAlignment.Right;
+    const mainOutputSide = vertical ? PortAlignment.Bottom : PortAlignment.Right;
 
     const incomingByNode: { [nodeId: string]: LinkAssignment[] } = {};
     const outgoingByNode: { [nodeId: string]: LinkAssignment[] } = {};
@@ -312,11 +319,33 @@ function applyDecisionNodeConvention(
         if (el.flowchartKind !== FlowchartNodeKind.Decision) continue;
 
         for (const a of incomingByNode[el.id] ?? []) a.tgtAlign = inputSide;
-        // All outgoing branches share the main output face; distribution along
-        // that face (port ratios) is left to distributePortsAlongSides. Fanning
-        // branches across Right/Left/etc. produced edge-through-self routing.
-        for (const a of outgoingByNode[el.id] ?? []) a.srcAlign = outputSide;
+        // Outgoing branches share the main output face — distribution along
+        // that face (port ratios) is left to distributePortsAlongSides. The
+        // exception is row-wrapped LR layouts: when a target sits in a
+        // different row, exiting on the cross-axis (Bottom or Top) gives a
+        // direct V-H-V route instead of a giant U-detour around the diagram.
+        for (const a of outgoingByNode[el.id] ?? []) {
+            a.srcAlign = decisionOutputFace(a, vertical, mainOutputSide);
+        }
     }
+}
+
+function decisionOutputFace(
+    a: LinkAssignment,
+    vertical: boolean,
+    mainOutputSide: PortAlignment,
+): PortAlignment {
+    if (vertical) {
+        // TB / BT: cross-axis targets (different column at similar y) keep the
+        // main output face; the edge router fans them out via port ratios.
+        return mainOutputSide;
+    }
+    // LR / RL: targets in a different row use the cross-axis face that points
+    // toward the target row.
+    if (Math.abs(a.dy) > CROSS_ROW_DY_THRESHOLD_PX) {
+        return a.dy > 0 ? PortAlignment.Bottom : PortAlignment.Top;
+    }
+    return mainOutputSide;
 }
 
 function distributePortsAlongSides(
