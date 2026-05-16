@@ -217,7 +217,7 @@ for repo in "${!RELEASED[@]}"; do
   pkg="${PUBLIC_NAME[$repo]}"
   v="${RELEASED[$repo]}"
   if grep -q "\"$pkg\"" package.json; then
-    sed -i '' "s|\"$pkg\": \"\^[0-9.]\+\"|\"$pkg\": \"^$v\"|" package.json
+    sed -i '' "s|\"$pkg\": \"\^[0-9.]\{1,\}\"|\"$pkg\": \"^$v\"|" package.json
     bumped+=("${pkg##*/}@$v")
   fi
 done
