@@ -45,6 +45,17 @@ interface ImportStructureOptions {
 
 type StyleProps = Partial<Pick<ColorSchema, "fillColor" | "strokeColor" | "textColor">>;
 
+// 8-char hex (#rrggbbaa) and rgba/hsla already carry alpha, so they read as
+// faint tints. Using them as a stroke fallback produces an invisible border;
+// solid colors are still fine to reuse as the stroke.
+const COLOR_HAS_BUILT_IN_ALPHA = /^(#[0-9a-f]{8}$)|^(rgba|hsla)\s*\(/i;
+
+function strokeFallback(fillColor: string | undefined, baseStroke: string): string {
+    if (!fillColor) return baseStroke;
+    if (COLOR_HAS_BUILT_IN_ALPHA.test(fillColor)) return baseStroke;
+    return fillColor;
+}
+
 function parseMermaidStyleProps(propsStr: string): StyleProps {
     const result: StyleProps = {};
     for (const part of propsStr.split(/[,;]/)) {
@@ -693,7 +704,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
         if (!target) return;
         const base = target.colorSchema ?? defaultColorSchema;
         const next: ColorSchema = {
-            strokeColor: props.strokeColor ?? base.strokeColor,
+            strokeColor: props.strokeColor ?? strokeFallback(props.fillColor, base.strokeColor),
             fillColor: props.fillColor ?? base.fillColor,
             rawColors: true,
         };
