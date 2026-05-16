@@ -93,6 +93,8 @@ export async function relayoutStructure<T extends Diagram>(
         newNodes[cid] = {...newNodes[cid], bounds};
     }
 
+    wrapLongLayoutsIntoRows(newNodes, resolvedHints);
+
     const realignedPorts = adjustPortAlignments(dia, newNodes, resolvedHints);
     const newPorts = distributePortsAlongSides(dia, realignedPorts, newNodes);
 
@@ -120,6 +122,103 @@ interface LinkAssignment {
     tgtAlign: PortAlignment;
     dx: number;
     dy: number;
+}
+
+// Cap on how many columns a single LR / RL row should hold before the layout
+// folds into a second (or third) row. Cyclic flowcharts can produce arbitrary
+// chain lengths after cycle-breaking; without this they render as one extreme-
+// width strip. The default 5 keeps "typical" flowcharts on a single line while
+// folding longer chains. Caller can override via `hints.maxColsPerRow`.
+const DEFAULT_MAX_COLS_PER_ROW = 5;
+// Gap inserted between wrapped rows. Larger than nodeSep so the row break is
+// visually unambiguous.
+const ROW_GAP_PX = 120;
+// Two layer X positions within `LAYER_X_EPSILON_PX` are treated as the same
+// column. Filigree centers nodes within a layer, so widths can shift the X by
+// a pixel or two even when they're nominally in the same layer.
+const LAYER_X_EPSILON_PX = 4;
+
+/**
+ * Fold a wide LR / RL layout into multiple rows once it exceeds the column
+ * cap. Walks the unique x-coordinates produced by filigree (each is a layer),
+ * partitions them into rows, then rewrites every node's (x, y) so it lands in
+ * its new (col, row) slot. Edge routing is recomputed at render time so the
+ * cross-row edges automatically re-shape.
+ *
+ * No-op for vertical layouts and for short layouts that fit in one row.
+ */
+function wrapLongLayoutsIntoRows(
+    nodes: DiagramInternal["nodes"],
+    hints: LayoutHints,
+): void {
+    const horizontal = hints.direction === "LR" || hints.direction === "RL" || hints.direction === undefined && false;
+    if (!horizontal) return;
+    const maxCols = hints.maxColsPerRow ?? DEFAULT_MAX_COLS_PER_ROW;
+    if (maxCols <= 0) return;
+
+    const entries = Object.entries(nodes).filter(([, n]) => n?.bounds);
+    if (entries.length === 0) return;
+
+    const uniqueXs = collapseToColumns(entries.map(([, n]) => n.bounds!.x));
+    if (uniqueXs.length <= maxCols) return;
+
+    const xToCol = new Map<number, number>();
+    for (let i = 0; i < uniqueXs.length; i++) xToCol.set(uniqueXs[i]!, i);
+
+    const colWidth = uniqueXs.length > 1 ? (uniqueXs[1]! - uniqueXs[0]!) : 0;
+    const baseX = uniqueXs[0]!;
+    const baseY = Math.min(...entries.map(([, n]) => n.bounds!.y));
+
+    // Pre-compute the max height for each row so cumulative Y respects the
+    // tallest node in each row (heights vary — decision nodes, multi-line
+    // labels, etc).
+    const rowHeights = new Map<number, number>();
+    for (const [, n] of entries) {
+        const b = n.bounds!;
+        const colIndex = nearestColIndex(b.x, uniqueXs);
+        const row = Math.floor(colIndex / maxCols);
+        rowHeights.set(row, Math.max(rowHeights.get(row) ?? 0, b.height));
+    }
+    const rowOffsets = new Map<number, number>();
+    let cumulative = 0;
+    const rowCount = Math.ceil(uniqueXs.length / maxCols);
+    for (let r = 0; r < rowCount; r++) {
+        rowOffsets.set(r, cumulative);
+        cumulative += (rowHeights.get(r) ?? 0) + ROW_GAP_PX;
+    }
+
+    for (const [, n] of entries) {
+        const b = n.bounds!;
+        const colIndex = nearestColIndex(b.x, uniqueXs);
+        const row = Math.floor(colIndex / maxCols);
+        const col = colIndex % maxCols;
+        b.x = baseX + col * colWidth;
+        b.y = baseY + (rowOffsets.get(row) ?? 0);
+    }
+}
+
+function collapseToColumns(xs: readonly number[]): number[] {
+    const sorted = [...xs].sort((a, b) => a - b);
+    const unique: number[] = [];
+    for (const x of sorted) {
+        if (unique.length === 0 || x - unique[unique.length - 1]! > LAYER_X_EPSILON_PX) {
+            unique.push(x);
+        }
+    }
+    return unique;
+}
+
+function nearestColIndex(x: number, sortedXs: readonly number[]): number {
+    let best = 0;
+    let bestDiff = Math.abs(x - sortedXs[0]!);
+    for (let i = 1; i < sortedXs.length; i++) {
+        const diff = Math.abs(x - sortedXs[i]!);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            best = i;
+        }
+    }
+    return best;
 }
 
 function adjustPortAlignments(

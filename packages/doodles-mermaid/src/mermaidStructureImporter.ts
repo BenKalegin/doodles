@@ -177,7 +177,15 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
             .filter(part => /^[\w-]+$/.test(part));
     }
 
-    function estimateNodeDimensions(label: string): { width: number; height: number } {
+    // Diamond shapes inscribe text in their inner rhombus (half-width × half-
+    // height at center). To give multi-line decision text the same visual room
+    // as a rectangle node, scale the bbox up — slightly more on the vertical
+    // axis because text lines stack vertically. Process / terminator / I-O use
+    // the rect interior directly so they need no scaling.
+    const DECISION_WIDTH_SCALE = 1.4;
+    const DECISION_HEIGHT_SCALE = 1.5;
+
+    function estimateNodeDimensions(label: string, kind?: FlowchartNodeKind): { width: number; height: number } {
         const defaultWidth = 150;
         const maxWidth = 260;
         const charPx = 8;
@@ -193,7 +201,14 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
         for (const segment of lines) {
             totalLines += segment.length === 0 ? 1 : Math.ceil(segment.length / charsPerLine);
         }
-        return {width, height: Math.max(60, totalLines * 18 + 16)};
+        const height = Math.max(60, totalLines * 18 + 16);
+        if (kind === FlowchartNodeKind.Decision) {
+            return {
+                width: Math.round(width * DECISION_WIDTH_SCALE),
+                height: Math.round(height * DECISION_HEIGHT_SCALE),
+            };
+        }
+        return {width, height};
     }
 
     function getOrCreateNode(
@@ -208,7 +223,8 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
                 const trimmed = label.trim();
                 const node = elements[nodeId] as NodeState;
                 node.text = trimmed;
-                const {width, height} = estimateNodeDimensions(trimmed);
+                const existingKind = (elements[nodeId] as NodeState).flowchartKind;
+                const {width, height} = estimateNodeDimensions(trimmed, flowchartKind ?? existingKind);
                 nodes[nodeId].bounds.width = Math.max(nodes[nodeId].bounds.width, width);
                 nodes[nodeId].bounds.height = Math.max(nodes[nodeId].bounds.height, height);
             }
@@ -223,7 +239,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
 
         const nodeId = generateId();
         const effectiveLabel = (label || normalizedName).trim();
-        const {width: nodeWidth, height: nodeHeight} = estimateNodeDimensions(effectiveLabel);
+        const {width: nodeWidth, height: nodeHeight} = estimateNodeDimensions(effectiveLabel, flowchartKind);
         const nodesPerRow = 5;
         const spacingX = 60;
         const spacingY = 80;

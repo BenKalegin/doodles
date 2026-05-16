@@ -30,13 +30,13 @@ export function routeEdges(diagram: RenderableDoodle, theme: ThemeTokens): EdgeR
 function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens): EdgeRoute | undefined {
     const endpoints = resolveEndpoints(link, diagram);
     if (!endpoints) return undefined;
-    const {sourceNodeId, targetNodeId, from, to, srcAlign, tgtAlign} = endpoints;
+    const {sourceNodeId, targetNodeId, from, to, srcAlign, tgtAlign, srcBounds, tgtBounds} = endpoints;
 
-    const polyline = orthogonalRoute(from, to, srcAlign, tgtAlign);
+    const polyline = orthogonalRoute(from, to, srcAlign, tgtAlign, srcBounds, tgtBounds);
     const label = String(link.text ?? "");
     const base: EdgeRoute = {edgeId: String(link.id), sourceNodeId, targetNodeId, polyline, label};
     if (!label) return base;
-    return {...base, labelBox: measureLabelBox(label, midpoint(from, to), theme)};
+    return {...base, labelBox: measureLabelBox(label, polylineMidpoint(polyline), theme)};
 }
 
 interface ResolvedEndpoints {
@@ -46,6 +46,8 @@ interface ResolvedEndpoints {
     to: Coordinate;
     srcAlign: PortAlignment | undefined;
     tgtAlign: PortAlignment | undefined;
+    srcBounds: Bounds;
+    tgtBounds: Bounds;
 }
 
 function resolveEndpoints(link: any, d: RenderableDoodle): ResolvedEndpoints | undefined {
@@ -68,6 +70,8 @@ function resolveEndpoints(link: any, d: RenderableDoodle): ResolvedEndpoints | u
         to: portPosition(toBounds, p2Pos),
         srcAlign: p1Pos?.alignment,
         tgtAlign: p2Pos?.alignment,
+        srcBounds: fromBounds,
+        tgtBounds: toBounds,
     };
 }
 
@@ -95,28 +99,43 @@ export function portPosition(
     }
 }
 
+// Clearance kept between a back-edge route and the bbox of either endpoint
+// when the two ports face the same direction (a U-detour). Larger than the
+// typical edge stroke width so the route reads as "going around" rather than
+// "hugging the corner."
+const SAME_FACE_DETOUR_PAD = 20;
+
 /**
  * Orthogonal route between two ports. The first segment leaves the source
  * perpendicular to its face; the last segment enters the target perpendicular
- * to its face. The bend(s) in between satisfy both constraints:
+ * to its face.
  *
- *   - Both ends on the same axis (V↔V or H↔H) → 3 segments, midpoint pivot
+ *   - Opposite faces (V↔V or H↔H, e.g. Bottom→Top) → 3 segments, midpoint pivot
  *     (the long horizontal/vertical lives in the channel between rows/cols).
  *   - Cross axis (V↔H) → 2 segments, single elbow.
+ *   - Same face (e.g. Right→Right back-edge from a cycle) → 5 segments, U-detour
+ *     that escapes past both bboxes before bending back.
  *
- * Falling back to dx/dy magnitude when alignment is unknown keeps behavior
- * sensible for diagrams whose ports aren't aligned yet.
+ * Falls back to dx/dy magnitude when alignment is unknown.
  */
 function orthogonalRoute(
     from: Coordinate,
     to: Coordinate,
     srcAlign: PortAlignment | undefined,
     tgtAlign: PortAlignment | undefined,
+    srcBounds: Bounds,
+    tgtBounds: Bounds,
 ): Coordinate[] {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
     if (Math.abs(dx) < COLLINEAR_TOLERANCE_PX || Math.abs(dy) < COLLINEAR_TOLERANCE_PX) {
+        if (srcAlign !== undefined && srcAlign === tgtAlign) {
+            return sameFaceDetour(from, to, srcAlign, srcBounds, tgtBounds);
+        }
         return [from, to];
+    }
+    if (srcAlign !== undefined && srcAlign === tgtAlign) {
+        return sameFaceDetour(from, to, srcAlign, srcBounds, tgtBounds);
     }
     const srcVertical = isVerticalAlignment(srcAlign);
     const tgtVertical = isVerticalAlignment(tgtAlign);
@@ -146,6 +165,49 @@ function orthogonalRoute(
     return [from, {x: midX, y: from.y}, {x: midX, y: to.y}, to];
 }
 
+/**
+ * U-shaped detour for back-edges whose endpoints sit on the same face. The
+ * route escapes perpendicular to the shared face past the outer edge of both
+ * bboxes, runs along the cross-axis to align with the target, then enters
+ * straight in. Bias the cross-axis travel to clear both bboxes on the
+ * smaller-extent side (above vs below for horizontal faces, etc.).
+ */
+function sameFaceDetour(
+    from: Coordinate,
+    to: Coordinate,
+    face: PortAlignment,
+    srcBounds: Bounds,
+    tgtBounds: Bounds,
+): Coordinate[] {
+    if (face === PortAlignment.Right) {
+        const outerX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
+        const aboveY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
+        const belowY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
+        const sideY = Math.abs(aboveY - from.y) <= Math.abs(belowY - from.y) ? aboveY : belowY;
+        return [from, {x: outerX, y: from.y}, {x: outerX, y: sideY}, {x: to.x, y: sideY}, to];
+    }
+    if (face === PortAlignment.Left) {
+        const outerX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
+        const aboveY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
+        const belowY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
+        const sideY = Math.abs(aboveY - from.y) <= Math.abs(belowY - from.y) ? aboveY : belowY;
+        return [from, {x: outerX, y: from.y}, {x: outerX, y: sideY}, {x: to.x, y: sideY}, to];
+    }
+    if (face === PortAlignment.Top) {
+        const outerY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
+        const leftX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
+        const rightX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
+        const sideX = Math.abs(leftX - from.x) <= Math.abs(rightX - from.x) ? leftX : rightX;
+        return [from, {x: from.x, y: outerY}, {x: sideX, y: outerY}, {x: sideX, y: to.y}, to];
+    }
+    // Bottom
+    const outerY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
+    const leftX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
+    const rightX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
+    const sideX = Math.abs(leftX - from.x) <= Math.abs(rightX - from.x) ? leftX : rightX;
+    return [from, {x: from.x, y: outerY}, {x: sideX, y: outerY}, {x: sideX, y: to.y}, to];
+}
+
 function isVerticalAlignment(a: PortAlignment | undefined): boolean {
     return a === PortAlignment.Top || a === PortAlignment.Bottom;
 }
@@ -154,8 +216,37 @@ function isHorizontalAlignment(a: PortAlignment | undefined): boolean {
     return a === PortAlignment.Left || a === PortAlignment.Right;
 }
 
-function midpoint(a: Coordinate, b: Coordinate): Coordinate {
-    return {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2};
+/**
+ * Point halfway along a polyline by arc length. The endpoint midpoint sits
+ * on the chord between the two endpoints — for a U-detour route the chord
+ * crosses straight through the source bbox, so labels placed there overlap
+ * the node. Walking the polyline keeps the label on the visible path.
+ */
+function polylineMidpoint(points: readonly Coordinate[]): Coordinate {
+    if (points.length === 0) return {x: 0, y: 0};
+    if (points.length === 1) return points[0]!;
+    let total = 0;
+    const segLengths: number[] = [];
+    for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1]!;
+        const b = points[i]!;
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        segLengths.push(len);
+        total += len;
+    }
+    if (total === 0) return points[0]!;
+    let remaining = total / 2;
+    for (let i = 0; i < segLengths.length; i++) {
+        const len = segLengths[i]!;
+        if (remaining <= len) {
+            const a = points[i]!;
+            const b = points[i + 1]!;
+            const t = len === 0 ? 0 : remaining / len;
+            return {x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t};
+        }
+        remaining -= len;
+    }
+    return points[points.length - 1]!;
 }
 
 /**
