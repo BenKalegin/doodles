@@ -4,7 +4,13 @@
  * needs to depend on the other for these types.
  */
 
-export type LayoutDirection = "TB" | "BT" | "LR" | "RL";
+export const LayoutDirection = {
+    TopToBottom: "TB",
+    BottomToTop: "BT",
+    LeftToRight: "LR",
+    RightToLeft: "RL",
+} as const;
+export type LayoutDirection = (typeof LayoutDirection)[keyof typeof LayoutDirection];
 
 export interface LayoutHints {
     direction?: LayoutDirection;

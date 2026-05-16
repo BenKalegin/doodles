@@ -1,4 +1,5 @@
 import {LAYERED_ALGORITHM_ID, layout, type INode} from "@benkalegin/filigree-api";
+import {LayoutDirection} from "@benkalegin/doodles-core";
 import type {ClusterDef, LayoutHints, LayoutLink, LayoutNode, LayoutNodeBounds, OrderHint} from "./autoLayout.js";
 
 const DEFAULT_RANK_SEP = 80;
@@ -30,14 +31,19 @@ interface MutableGraph extends MutableNode {
     filigreeHints?: JsonHint[];
 }
 
+// Mapping from doodles' LayoutDirection to filigree's `elk.direction` strings.
+// Filigree mirrors ELK's option names ("DOWN"/"UP"/"RIGHT"/"LEFT") rather than
+// the Mermaid-style TB/LR shorthand, so a translation is needed at the seam.
+const FILIGREE_DIRECTION_BY_LAYOUT: {readonly [key in LayoutDirection]: string} = {
+    [LayoutDirection.LeftToRight]: "RIGHT",
+    [LayoutDirection.RightToLeft]: "LEFT",
+    [LayoutDirection.BottomToTop]: "UP",
+    [LayoutDirection.TopToBottom]: "DOWN",
+};
+
 function filigreeDirection(direction: LayoutHints["direction"]): string {
-    switch (direction) {
-        case "LR": return "RIGHT";
-        case "RL": return "LEFT";
-        case "BT": return "UP";
-        case "TB":
-        default:   return "DOWN";
-    }
+    if (direction === undefined) return FILIGREE_DIRECTION_BY_LAYOUT[LayoutDirection.TopToBottom];
+    return FILIGREE_DIRECTION_BY_LAYOUT[direction];
 }
 
 /**

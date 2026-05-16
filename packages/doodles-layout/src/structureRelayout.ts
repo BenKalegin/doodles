@@ -1,5 +1,5 @@
 import type {Diagram} from "@benkalegin/doodles-core";
-import {ElementType, FlowchartNodeKind, PortAlignment} from "@benkalegin/doodles-core";
+import {ElementType, FlowchartNodeKind, LayoutDirection, PortAlignment} from "@benkalegin/doodles-core";
 import type {ClusterDef, LayoutHints, LayoutLink, LayoutNode, OrderHint} from "./autoLayout.js";
 import {computeDisplaySize} from "./autoLayout.js";
 import {applyFiligreeLayout} from "./filigreeLayout.js";
@@ -151,7 +151,8 @@ function wrapLongLayoutsIntoRows(
     nodes: DiagramInternal["nodes"],
     hints: LayoutHints,
 ): void {
-    const horizontal = hints.direction === "LR" || hints.direction === "RL" || hints.direction === undefined && false;
+    const horizontal = hints.direction === LayoutDirection.LeftToRight
+        || hints.direction === LayoutDirection.RightToLeft;
     if (!horizontal) return;
     const maxCols = hints.maxColsPerRow ?? DEFAULT_MAX_COLS_PER_ROW;
     if (maxCols <= 0) return;
@@ -242,30 +243,32 @@ function adjustPortAlignments(
         const ty = tb.y + tb.height / 2;
         const dx = tx - sx;
         const dy = ty - sy;
-        const vertical = hints.direction === "TB" || hints.direction === "BT";
+        const vertical = hints.direction === LayoutDirection.TopToBottom
+            || hints.direction === LayoutDirection.BottomToTop;
+        const reversed = hints.direction === LayoutDirection.BottomToTop
+            || hints.direction === LayoutDirection.RightToLeft;
         let srcAlign: PortAlignment;
         let tgtAlign: PortAlignment;
         // In directional layouts the natural axis follows the flow, not the
         // larger of |dx|/|dy|. Picking sideways alignment when target is below
-        // a source produced edges that re-entered the source bbox.
+        // a source produced edges that re-entered the source bbox. Back-edges
+        // land on a cross-axis face so they don't share the forward-edge port
+        // and so the U-detour has an obstacle-free face to enter through.
         if (vertical) {
-            const forward = hints.direction === "BT" ? dy <= 0 : dy >= 0;
+            const forward = reversed ? dy <= 0 : dy >= 0;
             srcAlign = forward
-                ? (hints.direction === "BT" ? PortAlignment.Top : PortAlignment.Bottom)
-                : (hints.direction === "BT" ? PortAlignment.Bottom : PortAlignment.Top);
-            // Back-edges land on a cross-axis face so they don't share the
-            // forward-edge port and so the U-detour has an obstacle-free face
-            // to enter through.
+                ? (reversed ? PortAlignment.Top : PortAlignment.Bottom)
+                : (reversed ? PortAlignment.Bottom : PortAlignment.Top);
             tgtAlign = forward
-                ? (hints.direction === "BT" ? PortAlignment.Bottom : PortAlignment.Top)
+                ? (reversed ? PortAlignment.Bottom : PortAlignment.Top)
                 : PortAlignment.Left;
         } else {
-            const forward = hints.direction === "RL" ? dx <= 0 : dx >= 0;
+            const forward = reversed ? dx <= 0 : dx >= 0;
             srcAlign = forward
-                ? (hints.direction === "RL" ? PortAlignment.Left : PortAlignment.Right)
-                : (hints.direction === "RL" ? PortAlignment.Right : PortAlignment.Left);
+                ? (reversed ? PortAlignment.Left : PortAlignment.Right)
+                : (reversed ? PortAlignment.Right : PortAlignment.Left);
             tgtAlign = forward
-                ? (hints.direction === "RL" ? PortAlignment.Right : PortAlignment.Left)
+                ? (reversed ? PortAlignment.Right : PortAlignment.Left)
                 : PortAlignment.Top;
         }
         assignments.push({
@@ -292,7 +295,8 @@ function applyDecisionNodeConvention(
     assignments: LinkAssignment[],
     hints: LayoutHints
 ): void {
-    const vertical = hints.direction === "TB" || hints.direction === "BT";
+    const vertical = hints.direction === LayoutDirection.TopToBottom
+        || hints.direction === LayoutDirection.BottomToTop;
     const inputSide = vertical ? PortAlignment.Top : PortAlignment.Left;
     const outputSide = vertical ? PortAlignment.Bottom : PortAlignment.Right;
 

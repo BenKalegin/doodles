@@ -22,7 +22,7 @@ export {FlowchartNodeKind} from "./flowchart.js";
 
 export {type DiagramDisplay, defaultDiagramDisplay, type Diagram} from "./diagram.js";
 
-export {type LayoutDirection, type LayoutHints} from "./layoutHints.js";
+export {LayoutDirection, type LayoutHints} from "./layoutHints.js";
 
 export {
     type DiagramKind,
