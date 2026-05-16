@@ -128,15 +128,17 @@ function orthogonalRoute(
 ): Coordinate[] {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
+    const sameFace = srcAlign !== undefined && srcAlign === tgtAlign;
+    const backEdge = srcAlign !== undefined && tgtAlign !== undefined && isBackEdgeForFace(from, to, srcAlign);
+
     if (Math.abs(dx) < COLLINEAR_TOLERANCE_PX || Math.abs(dy) < COLLINEAR_TOLERANCE_PX) {
-        if (srcAlign !== undefined && srcAlign === tgtAlign) {
-            return sameFaceDetour(from, to, srcAlign, srcBounds, tgtBounds);
-        }
+        if (sameFace) return sameFaceDetour(from, to, srcAlign!, srcBounds, tgtBounds);
+        if (backEdge) return crossAxisBackEdgeDetour(from, to, srcAlign!, tgtAlign!, srcBounds, tgtBounds);
         return [from, to];
     }
-    if (srcAlign !== undefined && srcAlign === tgtAlign) {
-        return sameFaceDetour(from, to, srcAlign, srcBounds, tgtBounds);
-    }
+    if (sameFace) return sameFaceDetour(from, to, srcAlign!, srcBounds, tgtBounds);
+    if (backEdge) return crossAxisBackEdgeDetour(from, to, srcAlign!, tgtAlign!, srcBounds, tgtBounds);
+
     const srcVertical = isVerticalAlignment(srcAlign);
     const tgtVertical = isVerticalAlignment(tgtAlign);
     const srcHorizontal = isHorizontalAlignment(srcAlign);
@@ -163,6 +165,74 @@ function orthogonalRoute(
     }
     const midX = from.x + dx / 2;
     return [from, {x: midX, y: from.y}, {x: midX, y: to.y}, to];
+}
+
+/**
+ * "Back-edge" from a port's POV: the target sits behind the face, not in
+ * front of it. A Right port whose target is to its left, a Bottom port whose
+ * target is above it, etc. Direct elbow routes for these collapse through
+ * the source bbox, so the router takes a U-detour instead.
+ */
+function isBackEdgeForFace(from: Coordinate, to: Coordinate, srcAlign: PortAlignment): boolean {
+    switch (srcAlign) {
+        case PortAlignment.Right: return to.x < from.x;
+        case PortAlignment.Left: return to.x > from.x;
+        case PortAlignment.Top: return to.y > from.y;
+        case PortAlignment.Bottom: return to.y < from.y;
+        default: return false;
+    }
+}
+
+/**
+ * U-detour for a back-edge where source and target face different axes
+ * (e.g. Right → Top). Both endpoints step out perpendicular to their face
+ * past the outer bbox edge, then meet at the corner formed by those two
+ * outer lines. When the faces are on the same axis but opposite sides
+ * (Right → Left, Top → Bottom), an additional cross-axis hop is needed.
+ */
+function crossAxisBackEdgeDetour(
+    from: Coordinate,
+    to: Coordinate,
+    srcAlign: PortAlignment,
+    tgtAlign: PortAlignment,
+    srcBounds: Bounds,
+    tgtBounds: Bounds,
+): Coordinate[] {
+    const right = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
+    const left = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
+    const top = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
+    const bottom = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
+    const exit = perpendicularStepOut(from, srcAlign, {right, left, top, bottom});
+    const entry = perpendicularStepOut(to, tgtAlign, {right, left, top, bottom});
+
+    const srcVertical = isVerticalAlignment(srcAlign);
+    const tgtVertical = isVerticalAlignment(tgtAlign);
+    if (srcVertical !== tgtVertical) {
+        // Cross-axis: 4 segments. The bend sits at the corner of the two
+        // perpendicular outer lines — outside both bboxes by construction.
+        const corner = {x: exit.x, y: entry.y};
+        return [from, exit, corner, entry, to];
+    }
+    // Same axis, opposite faces (Right↔Left or Top↔Bottom): 5 segments. Need
+    // to traverse cross-axis between source's outer line and target's outer.
+    if (srcVertical) {
+        const sideX = pickDetourSide(from.x, to.x, left, right);
+        return [from, exit, {x: sideX, y: exit.y}, {x: sideX, y: entry.y}, entry, to];
+    }
+    const sideY = pickDetourSide(from.y, to.y, top, bottom);
+    return [from, exit, {x: exit.x, y: sideY}, {x: entry.x, y: sideY}, entry, to];
+}
+
+interface OuterLines {right: number; left: number; top: number; bottom: number}
+
+function perpendicularStepOut(port: Coordinate, face: PortAlignment, outer: OuterLines): Coordinate {
+    switch (face) {
+        case PortAlignment.Right: return {x: outer.right, y: port.y};
+        case PortAlignment.Left: return {x: outer.left, y: port.y};
+        case PortAlignment.Top: return {x: port.x, y: outer.top};
+        case PortAlignment.Bottom: return {x: port.x, y: outer.bottom};
+        default: return port;
+    }
 }
 
 /**

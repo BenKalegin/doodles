@@ -693,7 +693,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
         if (!target) return;
         const base = target.colorSchema ?? defaultColorSchema;
         const next: ColorSchema = {
-            strokeColor: props.strokeColor ?? props.fillColor ?? base.strokeColor,
+            strokeColor: props.strokeColor ?? base.strokeColor,
             fillColor: props.fillColor ?? base.fillColor,
             rawColors: true,
         };

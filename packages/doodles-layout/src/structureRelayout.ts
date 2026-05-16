@@ -249,11 +249,24 @@ function adjustPortAlignments(
         // larger of |dx|/|dy|. Picking sideways alignment when target is below
         // a source produced edges that re-entered the source bbox.
         if (vertical) {
-            srcAlign = dy >= 0 ? PortAlignment.Bottom : PortAlignment.Top;
-            tgtAlign = dy >= 0 ? PortAlignment.Top : PortAlignment.Bottom;
+            const forward = hints.direction === "BT" ? dy <= 0 : dy >= 0;
+            srcAlign = forward
+                ? (hints.direction === "BT" ? PortAlignment.Top : PortAlignment.Bottom)
+                : (hints.direction === "BT" ? PortAlignment.Bottom : PortAlignment.Top);
+            // Back-edges land on a cross-axis face so they don't share the
+            // forward-edge port and so the U-detour has an obstacle-free face
+            // to enter through.
+            tgtAlign = forward
+                ? (hints.direction === "BT" ? PortAlignment.Bottom : PortAlignment.Top)
+                : PortAlignment.Left;
         } else {
-            srcAlign = dx >= 0 ? PortAlignment.Right : PortAlignment.Left;
-            tgtAlign = dx >= 0 ? PortAlignment.Left : PortAlignment.Right;
+            const forward = hints.direction === "RL" ? dx <= 0 : dx >= 0;
+            srcAlign = forward
+                ? (hints.direction === "RL" ? PortAlignment.Left : PortAlignment.Right)
+                : (hints.direction === "RL" ? PortAlignment.Right : PortAlignment.Left);
+            tgtAlign = forward
+                ? (hints.direction === "RL" ? PortAlignment.Right : PortAlignment.Left)
+                : PortAlignment.Top;
         }
         assignments.push({
             port1: el.port1, port2: el.port2,
