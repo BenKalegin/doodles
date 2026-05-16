@@ -41,8 +41,8 @@ importers:
         specifier: workspace:*
         version: link:../doodles-core
       '@benkalegin/filigree-api':
-        specifier: ^0.1.2
-        version: 0.1.2
+        specifier: ^0.1.3
+        version: 0.1.3
 
   packages/doodles-mermaid:
     dependencies:
@@ -71,44 +71,44 @@ importers:
 
 packages:
 
-  '@benkalegin/filigree-alg-force@0.1.2':
-    resolution: {integrity: sha512-H64KEm0DBtgMmSLTTfvy5QWU0mA9CWdHmpqKE7SVJXyuokl2cA9bJuDqYmGt36pm+A4Jw+6vaAROW5ZXOaP8ow==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-force/0.1.2/ce878621cbb306c8f920f5889784c47c8a87a4a2}
+  '@benkalegin/filigree-alg-force@0.1.3':
+    resolution: {integrity: sha512-7QzGhMnXyENnkeKmmlKPl3qdwAJp5QFyUMSXY7ge5nhZKjF/+MX2/Izvw54HIHfdjW2QSoc2kMkHQOdHoKX0tw==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-force/0.1.3/25b9ead17f8aeb9b48ab3db11b19f22fd2f4d1f4}
 
-  '@benkalegin/filigree-alg-layered@0.1.2':
-    resolution: {integrity: sha512-dfKRQ6G1V9sJcj10Oygcoa6+QgvuPWfYaHXFQcgowL/PRHHtKrPnX7dc46EyCyhU1+kWMyi88dACBfiD6lpn+A==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-layered/0.1.2/afcfc90eeb37230e931dae6a54e288d8e99f75e3}
+  '@benkalegin/filigree-alg-layered@0.1.3':
+    resolution: {integrity: sha512-3sG5LX1jhWlpO7FcMa6cja0qgYw+2fpNcbgInl9Do59zEDI+34Z7U66inxSpwoU/qRkp+tISZiIZW+pOakJZPA==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-layered/0.1.3/0799d229be1f84118aac72df1f8653a6ae8a68ac}
 
-  '@benkalegin/filigree-alg-mrtree@0.1.2':
-    resolution: {integrity: sha512-w/CEuvs761T4SuwdO9SwJ7pTzNtd59zSIIHYgMXxi+Tu4SpZ8nAJOnqU+nv+qrNkyytVuUqJKY6+f7pj4uWoug==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-mrtree/0.1.2/359e679f04cdaac0014a74b1f5087523a87335e9}
+  '@benkalegin/filigree-alg-mrtree@0.1.3':
+    resolution: {integrity: sha512-G5O4qVU+U1hgmwSci7V78zQgnZ2Axa3vMZCiQNINXNCo4a8qnOJBX1mCW5X9ZOc6EkHizlsKalQWPj6+jvH8CA==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-mrtree/0.1.3/0e00f310659c978f4d76b963364c69590760e0b3}
 
-  '@benkalegin/filigree-alg-radial@0.1.2':
-    resolution: {integrity: sha512-9JgjOvUF2xYpAi+5h0g+zcG2U/bZEL7zUBuRJqMAfbfvwNbDhXzH1Xxv5z5s75h3oS2q9VOq3Zc/ccxMuuA8TQ==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-radial/0.1.2/60fe94e5a71babed40dd87c91d34c3622c4e0376}
+  '@benkalegin/filigree-alg-radial@0.1.3':
+    resolution: {integrity: sha512-oqTbh7VabSPBe5W3cHSCjyRSjN3z4qgk3UD37wVYQsBNPSSQorcCbUWWyW83m/dhSCKr1jny1GEfS6aL1rXshQ==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-radial/0.1.3/79ff02ca6d6545f44efdeed17c01447ac127c471}
 
-  '@benkalegin/filigree-alg-rectpacking@0.1.2':
-    resolution: {integrity: sha512-3H/BNCJtahRbqjDqziNoUiA0ul6ddNqOkZgGgTBfelGHqoKp6uvyNjD5ft0ZqqCknnVEc7z/NkdtZSidmAghBg==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-rectpacking/0.1.2/0a81f680f37ea26246488ba19947e1a7c9ef179d}
+  '@benkalegin/filigree-alg-rectpacking@0.1.3':
+    resolution: {integrity: sha512-azlz1zCQrN2lmDxfhY7Fq3Ib9IkhHTLrexIP37XjmbzplmL2UYH+d+7X7vTG8znmTR1D2q01PadJ65gDHbr7fA==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-rectpacking/0.1.3/38762529fc1a73c8d6437027fde5667ab3168f32}
 
-  '@benkalegin/filigree-alg-stress@0.1.2':
-    resolution: {integrity: sha512-e+bdZpWNa+sIvw19LBvgCuN3hFFszh/bB5R5JDCTkNCY1NADVTPdwU7oU8JcNnZkpq4cq7RZivD3BZ1OtsbtRA==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-stress/0.1.2/918c91afb640d0af8dabd85523895ec7ad8b5d5a}
+  '@benkalegin/filigree-alg-stress@0.1.3':
+    resolution: {integrity: sha512-p1ILkCD+bJ6weJNiVZFGcWbqHLDt9gYfeBRLPqHwl9zreAy6l1DxBMr3TDtBs6vY2Oh3latIw1WPTZhfgE3/fQ==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-alg-stress/0.1.3/c06311dbd35a2ca521ae9b158f97593f1a3be8e0}
 
-  '@benkalegin/filigree-api@0.1.2':
-    resolution: {integrity: sha512-3maaeqAYCbjLjgDQVwabDUefWmj1Ef3GqtgN4LSm5vBavm+g26tDryZwvnZXODHXEDk1ss9RwstBLfqAsZPA8g==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-api/0.1.2/fef20b1a1b2b5254d44ed01ec3978a6d8f55281f}
+  '@benkalegin/filigree-api@0.1.3':
+    resolution: {integrity: sha512-cnpbURCLH6PZ27txQ5KSBiAsUNDOQXTy4zxn2chrGPEbLIiHsEeFR2EuQMW/nDKE8uNp34tRv+V25Jo/gXmFQw==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-api/0.1.3/286205388247d37816fd02e43cb651652e021bf2}
 
-  '@benkalegin/filigree-core@0.1.2':
-    resolution: {integrity: sha512-mnTQhDmFjTks1o6Kr26IBS+jlx9WM73mTgV3bPRcmpmhdaq1fSl3GAll0xT60JY7sE+q8KgK54Zf1AUKhilPBQ==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-core/0.1.2/be37a35097170d67569c9c54d295492e64ac27c1}
+  '@benkalegin/filigree-core@0.1.3':
+    resolution: {integrity: sha512-Gar/q55dNx/cgtYWqZArVgQOXbfp2obDENQF3P8MhqLjze4RTCU67p1hGwbEg4ACNhM70eIpcZVmZ07tCMFtog==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-core/0.1.3/ec7e1dd0771ac8f2a70110d8fcf660d82e703a13}
 
-  '@benkalegin/filigree-graph@0.1.2':
-    resolution: {integrity: sha512-KFOP6GIN/niM1s1P9y7a8wFMDRJOYZDm1HyE1GlGXoHn3/I6zG9laRU/dsGqj8prNzcGsOckUuNg/JTe6fDNsw==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-graph/0.1.2/397ee8d1a36d0ec15f7c7ae49c6b2be1c7e19692}
+  '@benkalegin/filigree-graph@0.1.3':
+    resolution: {integrity: sha512-BeQJ6kyndDSklP9fTpQoKekKgXfW+5xRXkLWxvh+y4Kgiq+B9Bu3qiHUgDzukuHFmngzg1qu7KLCUVhG2e6XRw==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-graph/0.1.3/e97bf6a932625e21dbbec1cecfb6850b1bd3a277}
 
-  '@benkalegin/filigree-hints@0.1.2':
-    resolution: {integrity: sha512-P8OsuGW7Sg4zVVOnsRaAgtXEfR5Ml47SN9SETp1IH33yoGwzizZpEeVkKZooQNE2yDLmZsyWtqMiArCqycYB+A==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-hints/0.1.2/f1b84a3d0bd610fce05b166962e30afe43397bb6}
+  '@benkalegin/filigree-hints@0.1.3':
+    resolution: {integrity: sha512-zwDKP8UK2KxMoiGZUkf7pO1YlbinmUH7mfScw0HkULUeVFMf5hvNfi9qMvpFN6MChf3P464WnG+rXnj3ZMSdKw==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-hints/0.1.3/780a2c74e64f8ef7b7468238fa788c05dc2c886b}
 
-  '@benkalegin/filigree-render-svg@0.1.2':
-    resolution: {integrity: sha512-v0xxC0cjxpWTsbXFKeXfuy3tOtsD/PYIR37eOcIK1Uk0EYGnVt3gIUxF0tJ9beaUTiaBrstcdJw+QyTPZdd6DA==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-render-svg/0.1.2/aa2173b20f7697aac5dcc996d8729536fbf5266c}
+  '@benkalegin/filigree-render-svg@0.1.3':
+    resolution: {integrity: sha512-W0/+H/2l7ugXtKS7NqPqnB/HSzn2o0+MnYJtmbDUc29W9BJVjxhumZ5LGUVL4dhDz992totxu+DWOfKQ1N1x/A==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-render-svg/0.1.3/a1f58f2c5916a6df62fef37bd466b083799e2b5f}
 
-  '@benkalegin/filigree-util-geometry@0.1.2':
-    resolution: {integrity: sha512-COGhcpsFxbTXVL0+vZfFJ1oKWlBkOZLgBCv0IJ4l+MDtQ/48fjlBlixqCRpCyw9M287kdWfXSDYXAT6Hu3bIdw==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-util-geometry/0.1.2/a4c1e610c6aadffaf0ffce5e5d70ba7174dd36d6}
+  '@benkalegin/filigree-util-geometry@0.1.3':
+    resolution: {integrity: sha512-M7t7Y4qexW+HbtCFl3qZHzKPFbUzvhVzfEKBQzSQuSB2YhwiWPQ5p2s2LXOfrIGDQ2RND3TakpfQxqXBNjZo4w==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-util-geometry/0.1.3/30e6252f185659f8037abe6e9f4be3dddd73ac59}
 
-  '@benkalegin/filigree-util-solver@0.1.2':
-    resolution: {integrity: sha512-Hhjzhs8ScaKXvJFY+67CMkSPCkM5gW7+x0QaJdNYwAUK1WoLRyVpYEfX+1p6E9AtCAQdVRvsMHQCO5PMwBEreA==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-util-solver/0.1.2/10f8a39b8c0c83652fdf2ce9f9ad86b6277df870}
+  '@benkalegin/filigree-util-solver@0.1.3':
+    resolution: {integrity: sha512-fo905WAn3ohkf6DXliHioHpbeWuWI9iVoapzVCHjoKs1Lkt/xe1t7qyyG06NlQPru/ZP3JGf4Lwc+NWhKrwT0Q==, tarball: https://npm.pkg.github.com/download/@benkalegin/filigree-util-solver/0.1.3/ec32758bdb222f258867aa745e40d66e6ee4a0a1}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -616,71 +616,71 @@ packages:
 
 snapshots:
 
-  '@benkalegin/filigree-alg-force@0.1.2':
+  '@benkalegin/filigree-alg-force@0.1.3':
     dependencies:
-      '@benkalegin/filigree-core': 0.1.2
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-core': 0.1.3
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-alg-layered@0.1.2':
+  '@benkalegin/filigree-alg-layered@0.1.3':
     dependencies:
-      '@benkalegin/filigree-core': 0.1.2
-      '@benkalegin/filigree-graph': 0.1.2
-      '@benkalegin/filigree-hints': 0.1.2
-      '@benkalegin/filigree-util-geometry': 0.1.2
-      '@benkalegin/filigree-util-solver': 0.1.2
+      '@benkalegin/filigree-core': 0.1.3
+      '@benkalegin/filigree-graph': 0.1.3
+      '@benkalegin/filigree-hints': 0.1.3
+      '@benkalegin/filigree-util-geometry': 0.1.3
+      '@benkalegin/filigree-util-solver': 0.1.3
 
-  '@benkalegin/filigree-alg-mrtree@0.1.2':
+  '@benkalegin/filigree-alg-mrtree@0.1.3':
     dependencies:
-      '@benkalegin/filigree-core': 0.1.2
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-core': 0.1.3
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-alg-radial@0.1.2':
+  '@benkalegin/filigree-alg-radial@0.1.3':
     dependencies:
-      '@benkalegin/filigree-core': 0.1.2
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-core': 0.1.3
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-alg-rectpacking@0.1.2':
+  '@benkalegin/filigree-alg-rectpacking@0.1.3':
     dependencies:
-      '@benkalegin/filigree-core': 0.1.2
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-core': 0.1.3
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-alg-stress@0.1.2':
+  '@benkalegin/filigree-alg-stress@0.1.3':
     dependencies:
-      '@benkalegin/filigree-core': 0.1.2
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-core': 0.1.3
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-api@0.1.2':
+  '@benkalegin/filigree-api@0.1.3':
     dependencies:
-      '@benkalegin/filigree-alg-force': 0.1.2
-      '@benkalegin/filigree-alg-layered': 0.1.2
-      '@benkalegin/filigree-alg-mrtree': 0.1.2
-      '@benkalegin/filigree-alg-radial': 0.1.2
-      '@benkalegin/filigree-alg-rectpacking': 0.1.2
-      '@benkalegin/filigree-alg-stress': 0.1.2
-      '@benkalegin/filigree-core': 0.1.2
-      '@benkalegin/filigree-graph': 0.1.2
-      '@benkalegin/filigree-hints': 0.1.2
-      '@benkalegin/filigree-render-svg': 0.1.2
+      '@benkalegin/filigree-alg-force': 0.1.3
+      '@benkalegin/filigree-alg-layered': 0.1.3
+      '@benkalegin/filigree-alg-mrtree': 0.1.3
+      '@benkalegin/filigree-alg-radial': 0.1.3
+      '@benkalegin/filigree-alg-rectpacking': 0.1.3
+      '@benkalegin/filigree-alg-stress': 0.1.3
+      '@benkalegin/filigree-core': 0.1.3
+      '@benkalegin/filigree-graph': 0.1.3
+      '@benkalegin/filigree-hints': 0.1.3
+      '@benkalegin/filigree-render-svg': 0.1.3
 
-  '@benkalegin/filigree-core@0.1.2':
+  '@benkalegin/filigree-core@0.1.3':
     dependencies:
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-graph@0.1.2': {}
+  '@benkalegin/filigree-graph@0.1.3': {}
 
-  '@benkalegin/filigree-hints@0.1.2':
+  '@benkalegin/filigree-hints@0.1.3':
     dependencies:
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-render-svg@0.1.2':
+  '@benkalegin/filigree-render-svg@0.1.3':
     dependencies:
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-util-geometry@0.1.2':
+  '@benkalegin/filigree-util-geometry@0.1.3':
     dependencies:
-      '@benkalegin/filigree-graph': 0.1.2
+      '@benkalegin/filigree-graph': 0.1.3
 
-  '@benkalegin/filigree-util-solver@0.1.2': {}
+  '@benkalegin/filigree-util-solver@0.1.3': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
