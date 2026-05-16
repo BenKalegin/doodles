@@ -76,11 +76,10 @@ esac
 command -v gh >/dev/null || { echo "✗ gh CLI required"; exit 1; }
 command -v pnpm >/dev/null || { echo "✗ pnpm required"; exit 1; }
 
-SCOPES=$(gh auth status 2>&1 | grep -oE "scopes: '[^']*'" | head -1 || true)
-case "$SCOPES" in
-  *write:packages*) ;;
-  *) echo "✗ gh token lacks write:packages scope (got: $SCOPES). Run: gh auth refresh -s write:packages"; exit 1 ;;
-esac
+if ! gh auth status 2>&1 | grep -q "write:packages"; then
+  echo "✗ gh token lacks write:packages scope. Run: gh auth refresh -s write:packages"
+  exit 1
+fi
 
 # Trees must be clean. Tolerate only package.json / pnpm-lock.yaml staged.
 for repo in "${REPOS_ORDER[@]}" axonize; do
