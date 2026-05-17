@@ -73,6 +73,14 @@ export {
 } from "./colorSchemas.js";
 
 export {
+    classNodeHeaderHeight,
+    classNodeHeaderHeightWithAnnotation,
+    classNodeMemberLineHeight,
+    classNodeSectionVerticalPadding,
+    classNodeHeaderTextInsets,
+    classNodeMemberTextInsets,
+    classNodeMemberFontSize,
+    type ClassNodeSectionsLayout,
     createClassMember,
     inferClassMemberKind,
     getClassFieldsText,
@@ -80,6 +88,9 @@ export {
     getClassMembersText,
     replaceClassMembersText,
     normalizeClassAnnotation,
+    classSectionHeightForMembers,
+    classNodeHeaderHeightForAnnotation,
+    classNodeSectionsLayout,
     minimumClassNodeHeight,
 } from "./classDiagramUtils.js";
 
