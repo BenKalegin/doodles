@@ -300,6 +300,14 @@ function pinChainToY(
         if (isClusterInternal(cur)) break;
         const bounds = nodes[cur]?.bounds;
         if (!bounds) break;
+        // Pin DOWNWARD only. When a chain spans a wrap boundary (e.g. PASS,
+        // LLM in row 0 followed by SR, NEXT wrapped to row 1), `wrap`
+        // already shifted SR's x to row-1-col-0. Pulling SR's y back up to
+        // the fork's row would leave it at row-1-col-0's x in row 0's y —
+        // exactly overlapping whatever node sits at row-0-col-0. Going down
+        // is safe: the column position post-wrap doesn't collide with any
+        // higher-row node.
+        if (targetY < bounds.y) break;
         bounds.y = targetY;
         const out = outEdges.get(cur);
         if (!out || out.length !== 1) break;

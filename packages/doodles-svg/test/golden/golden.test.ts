@@ -617,6 +617,33 @@ describe("golden: lr-row-mixed-heights", () => {
     });
 });
 
+describe("golden: lr-fork-chain-wrap", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-fork-chain-wrap"); });
+
+    // Bug regression: linear-tail-after-fork used to pin the first-child
+    // chain all the way to the fork's y, which collides nodes when the chain
+    // spans a wrap boundary. Bill forks (Caterpillar, Dormouse). First child
+    // Caterpillar's chain Caterpillar → Eaglet → Fawn → Gryphon spans 7
+    // columns total, so Fawn/Gryphon wrap to row 1 at x = col 0 / col 1.
+    // The pre-fix rule pulled Fawn back up to row 0's y, leaving its x at
+    // row-1's col 0 — exact same (x, y) as Alice. Same for Gryphon vs Bill.
+    // Fix: pin DOWNWARD only — chain pinning stops at the wrap boundary.
+    it("no two nodes overlap after wrap", () => {
+        loaded.L.nodes("Alice", "Bill", "Caterpillar", "Dormouse", "Eaglet", "Fawn", "Gryphon").noOverlap();
+    });
+
+    it("wrapped chain tail stays on its own row, not pulled back to the fork's row", () => {
+        loaded.L.nodes("Fawn", "Gryphon").sameRow();
+        loaded.L.node("Fawn").below("Alice");
+        loaded.L.node("Gryphon").below("Bill");
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -636,6 +663,7 @@ describe("golden: fixture inventory", () => {
             "lr-back-edge-wrap",
             "lr-fork-cross-row",
             "lr-row-mixed-heights",
+            "lr-fork-chain-wrap",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);

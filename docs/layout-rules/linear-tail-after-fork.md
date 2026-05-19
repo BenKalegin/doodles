@@ -42,6 +42,18 @@ Trunk row: `Alice → Hatter → Dormouse`. Tail row, hanging below the fork at 
 
 `alignChainsToForkRow` in [`packages/doodles-layout/src/structureRelayout.ts`](../../packages/doodles-layout/src/structureRelayout.ts), called immediately after `wrapLongLayoutsIntoRows`. Skips TB/BT layouts and cluster-internal nodes for the reasons above.
 
+## Wrap-boundary safety
+
+When a chain spans a wrap boundary — e.g., `PASS → LLM → SR → NEXT` where the trunk runs 7 ranks deep and the last two nodes get wrapped to row 1 — the wrap pass has already shifted those late nodes' x values to row-1-relative positions (col 0, col 1). Pinning their y back up to the fork's row would leave them at row-1's x in row-0's y, overlapping whatever sits at row-0-col-0.
+
+To prevent the overlap, `pinChainToY` only pins **downward**. A pin that would move a node up (target y < current y) breaks the chain — the node stays where the wrap pass put it, and any subsequent chain members stay with it. Going down to an empty y slot below the source row is always safe; going up risks colliding with an existing node at the same x-column in the earlier row.
+
+See [`lr-fork-chain-wrap.mmd`](../../packages/doodles-svg/test/golden/fixtures/lr-fork-chain-wrap.mmd) for the regression test:
+
+![lr-fork-chain-wrap](./images/lr-fork-chain-wrap.svg)
+
+Bill is the fork. Its first child Caterpillar's chain `Caterpillar → Eaglet → Fawn → Gryphon` would naturally span 7 columns. Wrap kicks in, Fawn and Gryphon land on row 1. The downward-only pin keeps them there instead of pulling them back to Bill's row.
+
 ## Anti-example
 
 Without the rule, the same input renders as a staircase:
