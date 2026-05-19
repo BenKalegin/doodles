@@ -1,0 +1,51 @@
+flowchart LR
+    subgraph Entry["HTTP / Entry"]
+        UV[uvicorn]
+        FA[FastAPI app]
+        MW1[RequestIdMiddleware]
+        MW2[StatsdMiddleware]
+        MW3[security_headers]
+    end
+
+    subgraph Routers["Routers"]
+        R1[chat v1]
+        R2[chat v2]
+        R3[prompt]
+        R4[messages]
+        R5[sessions]
+    end
+
+    subgraph Services["Services"]
+        AGSUP[AgentService]
+        AGDA[DeepAgent]
+        SESS[SessionService]
+        MSG[MessagesService]
+    end
+
+    subgraph Clients["Clients"]
+        BR[Bedrock]
+        GW[Gateway]
+        IDM[IDM]
+    end
+
+    subgraph Data["Data"]
+        TDB[(Tenant DB)]
+        VK[(Valkey)]
+    end
+
+    UV --> FA
+    FA --> MW1 --> MW2 --> MW3
+    FA --> R1 & R2 & R3 & R4 & R5
+    R1 --> AGSUP
+    R2 --> AGDA
+    R3 --> MSG
+    R4 --> MSG
+    R5 --> SESS
+    AGSUP --> BR
+    AGDA --> BR
+    AGSUP --> GW
+    AGDA --> GW
+    AGSUP --> TDB
+    AGDA --> TDB
+    AGSUP --> VK
+    GW --> IDM

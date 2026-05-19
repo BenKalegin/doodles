@@ -93,7 +93,11 @@ export async function relayoutStructure<T extends Diagram>(
         newNodes[cid] = {...newNodes[cid], bounds};
     }
 
-    wrapLongLayoutsIntoRows(newNodes, resolvedHints);
+    const excludeFromWrapping = new Set<string>([
+        ...Object.keys(clusters),
+        ...Object.keys(nodeParents),
+    ]);
+    wrapLongLayoutsIntoRows(newNodes, resolvedHints, excludeFromWrapping);
 
     const realignedPorts = adjustPortAlignments(dia, newNodes, resolvedHints);
     const newPorts = distributePortsAlongSides(dia, realignedPorts, newNodes);
@@ -146,10 +150,16 @@ const LAYER_X_EPSILON_PX = 4;
  * cross-row edges automatically re-shape.
  *
  * No-op for vertical layouts and for short layouts that fit in one row.
+ *
+ * `excludeIds` lists clusters and their members. Filigree lays out compound
+ * nodes independently from the root flow, so their x positions don't belong
+ * in the root's column lattice — including them collapses `colWidth` to the
+ * intra-cluster padding gap and stacks every root node on top of each other.
  */
 function wrapLongLayoutsIntoRows(
     nodes: DiagramInternal["nodes"],
     hints: LayoutHints,
+    excludeIds: ReadonlySet<string>,
 ): void {
     const horizontal = hints.direction === LayoutDirection.LeftToRight
         || hints.direction === LayoutDirection.RightToLeft;
@@ -157,7 +167,7 @@ function wrapLongLayoutsIntoRows(
     const maxCols = hints.maxColsPerRow ?? DEFAULT_MAX_COLS_PER_ROW;
     if (maxCols <= 0) return;
 
-    const entries = Object.entries(nodes).filter(([, n]) => n?.bounds);
+    const entries = Object.entries(nodes).filter(([id, n]) => n?.bounds && !excludeIds.has(id));
     if (entries.length === 0) return;
 
     const uniqueXs = collapseToColumns(entries.map(([, n]) => n.bounds!.x));

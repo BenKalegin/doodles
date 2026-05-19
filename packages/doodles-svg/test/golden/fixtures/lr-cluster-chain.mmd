@@ -1,0 +1,27 @@
+flowchart LR
+    subgraph Entry["HTTP / Entry"]
+        UV[uvicorn]
+        FA[FastAPI app]
+        MW1[RequestIdMiddleware]
+    end
+    subgraph Routers["Routers"]
+        R1[chat v1]
+        R2[chat v2 SSE]
+        R3[health]
+    end
+    subgraph Services["Services"]
+        S1[AgentService]
+        S2[SessionService]
+    end
+    subgraph Clients["Clients"]
+        C1[BedrockClient]
+        C2[ION Gateway]
+    end
+    UV --> FA --> MW1
+    FA --> R1 & R2 & R3
+    R1 --> S1
+    R2 --> S1
+    R3 --> S2
+    S1 --> C1
+    S1 --> C2
+    S2 --> C2

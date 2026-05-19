@@ -149,6 +149,10 @@ export interface NodesAssert {
     orderedTopToBottom(): NodesAssert;
     sameRow(tol?: number): NodesAssert;
     sameColumn(tol?: number): NodesAssert;
+    /** No two of the named nodes' bboxes overlap. Catches the visually-stacked
+     *  case that {@link orderedLeftToRight} misses when centers are close but
+     *  widths still cause the boxes to cover each other. */
+    noOverlap(): NodesAssert;
 }
 
 export interface EdgeQuery {
@@ -439,6 +443,24 @@ export function layoutFor(result: LaidOutDiagram, options: LayoutForOptions = {}
                     if (Math.abs(centerX(cur.b) - centerX(ref.b)) > t) {
                         throw new Error(`Expected "${cur.text}" in same column as "${ref.text}"`);
                     }
+                }
+                return api;
+            },
+            noOverlap() {
+                const offenders: string[] = [];
+                for (let i = 0; i < items.length; i++) {
+                    for (let j = i + 1; j < items.length; j++) {
+                        const a = items[i]!, b = items[j]!;
+                        if (rectsOverlap(a.b, b.b)) {
+                            offenders.push(
+                                `"${a.text}" (${a.b.x.toFixed(0)},${a.b.y.toFixed(0)} ${a.b.width.toFixed(0)}×${a.b.height.toFixed(0)}) ` +
+                                `vs "${b.text}" (${b.b.x.toFixed(0)},${b.b.y.toFixed(0)} ${b.b.width.toFixed(0)}×${b.b.height.toFixed(0)})`
+                            );
+                        }
+                    }
+                }
+                if (offenders.length > 0) {
+                    throw new Error(`Expected no overlap among nodes, found:\n  ${offenders.join("\n  ")}`);
                 }
                 return api;
             }

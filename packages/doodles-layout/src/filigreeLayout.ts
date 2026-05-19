@@ -6,6 +6,9 @@ const DEFAULT_RANK_SEP = 80;
 const DEFAULT_NODE_SEP = 60;
 const CLUSTER_PADDING = 20;
 const CLUSTER_LABEL_HEIGHT = 22; // matches ClusterContainer LABEL_HEIGHT
+// Cross-compound edges are routed at the root layer and hug cluster borders
+// at zero clearance unless this minimum is set explicitly.
+const CLUSTER_EDGE_NODE_SPACING = 20;
 
 interface MutableEdge {
     id: string;
@@ -141,6 +144,32 @@ export async function applyFiligreeLayout(
         if (containerEdges) clusterNodeById[cid]!.edges = containerEdges;
     }
 
+    // Synthesize cluster-to-cluster ordering edges for cross-compound edges at root.
+    // Filigree's layered algorithm doesn't propagate ordering constraints from edges
+    // between cluster descendants up to the cluster level. Explicit cluster→cluster
+    // edges give ELK the layer constraints needed for TB/LR layouts.
+    const topLevelClusterOf = (id: string): string | undefined => {
+        if (clusterNodeById[id] && !clusterParents?.[id]) return id;
+        const chain = ancestorsOf(id);
+        return chain.length > 0 ? chain[chain.length - 1] : undefined;
+    };
+    const seenOrderingPairs = new Set<string>();
+    for (const link of links) {
+        if (!nodes[link.source] || !nodes[link.target]) continue;
+        if (lca(link.source, link.target) !== ROOT) continue;
+        const srcTop = topLevelClusterOf(link.source);
+        const tgtTop = topLevelClusterOf(link.target);
+        if (!srcTop || !tgtTop || srcTop === tgtTop) continue;
+        const key = `${srcTop}\0${tgtTop}`;
+        if (seenOrderingPairs.has(key)) continue;
+        seenOrderingPairs.add(key);
+        (edgesByContainer[ROOT] ??= []).push({
+            id: `order_${srcTop}_${tgtTop}`,
+            sources: [srcTop],
+            targets: [tgtTop]
+        });
+    }
+
     const root: MutableGraph = {
         id: "root",
         layoutOptions: {
@@ -148,7 +177,8 @@ export async function applyFiligreeLayout(
             "elk.direction": direction,
             "elk.layered.spacing.layer": layerSpacing,
             "elk.layered.spacing.nodeNode": nodeSpacing,
-            "elk.padding": compoundPadding
+            "elk.padding": compoundPadding,
+            "elk.spacing.edgeNode": CLUSTER_EDGE_NODE_SPACING,
         },
         children: childrenOf[ROOT] ?? [],
         edges: edgesByContainer[ROOT] ?? [],

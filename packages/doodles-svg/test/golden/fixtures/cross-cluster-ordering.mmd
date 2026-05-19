@@ -1,0 +1,11 @@
+flowchart TB
+    subgraph Clients["Clients"]
+        Browser[Web Browser]
+        Mobile[Mobile App]
+    end
+    subgraph Backend["Backend"]
+        API[API Gateway]
+        DB[Database]
+    end
+    Browser --> API
+    Mobile --> API

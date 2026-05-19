@@ -415,10 +415,21 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
             lowerLine.startsWith('flowchart') ||
             lowerLine.startsWith('graph')) continue;
 
-        const subgraphMatch = line.match(/^subgraph\s+([\w-]+)(?:\s*\[\s*["`]?(.+?)["`]?\s*\])?\s*$/);
+        // Three accepted forms:
+        //   subgraph ID                       — id = ID, label = ID
+        //   subgraph ID [label]               — id = ID, label = label (label may be quoted)
+        //   subgraph "Quoted Display Name"    — id = label = the quoted string (mermaid's
+        //                                       anonymous subgraph syntax; without this branch
+        //                                       the line is silently dropped and all leaves
+        //                                       inside the subgraph fall through to root,
+        //                                       which produces a collapsed layout)
+        const subgraphMatch = line.match(
+            /^subgraph\s+(?:"([^"]+)"|([\w-]+)(?:\s*\[\s*["`]?(.+?)["`]?\s*\])?)\s*$/
+        );
         if (subgraphMatch) {
-            const sid = subgraphMatch[1]!;
-            const label = subgraphMatch[2];
+            const quotedName = subgraphMatch[1];
+            const sid = quotedName ?? subgraphMatch[2]!;
+            const label = quotedName ?? subgraphMatch[3];
             if (subgraphStack.length > 0) {
                 clusterParents[sid] = currentSubgraph();
             }

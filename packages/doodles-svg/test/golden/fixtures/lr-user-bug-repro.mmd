@@ -1,0 +1,70 @@
+flowchart LR
+    subgraph "HTTP / Entry"
+        UV[uvicorn / gunicorn]
+        FA[FastAPI app]
+        MW1[RequestIdMiddleware]
+        MW2[StatsdMiddleWare]
+        MW3[security_headers]
+    end
+
+    subgraph "Routers (src/api)"
+        R1[chat v1 + sync]
+        R2[chat v2 SSE]
+        R3[prompt /stream]
+        R4[messages /stream]
+        R5[sessions CRUD]
+        R6[models /tools]
+        R7[evaluations]
+        R8[A2A sub-app]
+        R9[healthcheck / canary / info]
+    end
+
+    subgraph "Services (src/services)"
+        AGSUP[AgentService]
+        AGDA[DeepAgentService]
+        SESS[SessionService]
+        MSG[MessagesService]
+        EVAL[Evaluations]
+        FEAT[Feature flags]
+        RATE[Rate limiters]
+        TOOLF[Tool factory]
+        BILL[BillingService]
+    end
+
+    subgraph "Clients (src/clients)"
+        BR[BedrockModelClient]
+        GW[ION API Gateway]
+        IDM[IDM]
+        MCP[MCP Server Client]
+        KMS[KMS]
+        LS[LangSmith]
+        REG[Bedrock Registry]
+    end
+
+    subgraph "Data (src/data + src/cache)"
+        TDB[(Tenant Postgres)]
+        FDB[(Farm Postgres)]
+        VK[(Valkey / Redis)]
+        DDB[(DynamoDB)]
+    end
+
+    UV --> FA
+    FA --> MW1 --> MW2 --> MW3
+    FA --> R1 & R2 & R3 & R4 & R5 & R6 & R7 & R8 & R9
+    R1 --> AGSUP
+    R2 --> AGDA
+    R3 --> MSG
+    R4 --> MSG
+    R5 --> SESS
+    R7 --> EVAL
+    AGSUP & AGDA --> TOOLF
+    AGSUP & AGDA --> BR
+    AGSUP & AGDA --> TDB
+    AGSUP --> VK
+    AGDA --> TDB
+    TOOLF --> MCP
+    TOOLF --> GW
+    TOOLF --> IDM
+    AGSUP & AGDA --> LS
+    BR --> REG
+    BILL --> DDB
