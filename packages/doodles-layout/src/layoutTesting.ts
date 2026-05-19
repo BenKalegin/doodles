@@ -162,6 +162,9 @@ export interface EdgeQuery {
 
 export interface EdgeAssert {
     hasLabel(label: string | undefined): EdgeAssert;
+    /** This edge's routed polyline does not enter the interior of any of the
+     *  named non-endpoint nodes. Requires routes supplied to `layoutFor`. */
+    doesNotCross(...nodeTexts: string[]): EdgeAssert;
 }
 
 export interface EdgesAssert {
@@ -476,6 +479,33 @@ export function layoutFor(result: LaidOutDiagram, options: LayoutForOptions = {}
                 if (actual !== label) {
                     throw new Error(
                         `Expected edge "${q.fromText}" → "${q.toText}" label ${JSON.stringify(label)}, got ${JSON.stringify(actual)}`
+                    );
+                }
+                return api;
+            },
+            doesNotCross(...nodeTexts) {
+                const routes = options.routes;
+                if (!routes) throw new Error("doesNotCross() requires routes supplied to layoutFor()");
+                const route = routes.find(r => r.edgeId === link.id);
+                if (!route) throw new Error(`No route found for edge "${q.fromText}" → "${q.toText}"`);
+                const offenders: string[] = [];
+                for (const text of nodeTexts) {
+                    const target = findNode(text);
+                    const interior = insetBounds(boundsOf(target), NODE_INTERIOR_INSET_PX);
+                    if (interior.width <= 0 || interior.height <= 0) continue;
+                    for (let i = 1; i < route.polyline.length; i++) {
+                        const p1 = route.polyline[i - 1]!;
+                        const p2 = route.polyline[i]!;
+                        if (segmentEntersRect(p1, p2, interior)) {
+                            offenders.push(`"${text}" (polyline segment ${i})`);
+                            break;
+                        }
+                    }
+                }
+                if (offenders.length > 0) {
+                    const polyStr = route.polyline.map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(" → ");
+                    throw new Error(
+                        `Edge "${q.fromText}" → "${q.toText}" crosses non-endpoint nodes: ${offenders.join(", ")}\n  polyline: ${polyStr}`
                     );
                 }
                 return api;

@@ -16,6 +16,18 @@ Run a single test file:
 pnpm vitest run packages/doodles-svg/test/golden/golden.test.ts
 ```
 
+## Test-first is mandatory for layout work
+
+Doodles' job is producing correct layouts; the DSL-based golden tests are the source of truth, not visual inspection. **Never** fix a layout bug by eyeballing the rendered SVG and iterating on code. The order is always:
+
+1. **Reproduce in a test first.** Add a `.mmd` fixture under `packages/doodles-svg/test/golden/fixtures/` that reproduces the failing layout, and add a describe block in `golden.test.ts` with DSL assertions (`.noOverlap()`, `.noNodeIntersection()`, `.noLabelOverlap()`, `.leftOf()`, `.centeredOver()`, etc.) that **fail** on the current code. Run the test and confirm it's red.
+2. **Make the test green.** Change the layout code until the test passes. Don't rebuild downstream consumers (clouddiagram, axonize) or open the rendered SVG to verify — the test is the verification.
+3. **Keep the test.** The new test stays as a permanent regression check.
+
+Why this matters: visual inspection misses bugs that the strict DSL catches (`.leftOf` passes when x=1.0/1.01 but boxes still overlap), wastes tokens on rebuild loops, and produces fixes that pass one screenshot but regress on another diagram. DSL assertions describe *what humans expect to see* in engine-agnostic terms — they survive layout-engine swaps and structural refactors.
+
+DSL methods available — see `packages/doodles-layout/src/layoutTesting.ts` for the full surface. Common ones: positional (`leftOf`/`rightOf`/`above`/`below`, `orderedLeftToRight`/`orderedTopToBottom`, `sameRow`/`sameColumn`, `centeredOver`, `centeredHorizontallyWith`), structural (`cluster().contains()`, `insideCluster`), edge (`edges().count()`, `noCrossings`, `noNodeIntersection`, `noLabelOverlap`), bbox (`nodes(...).noOverlap()`). If the bug needs an assertion that doesn't exist yet, add it to the DSL first.
+
 ## Code Style & Architecture
 
 - **No long methods.** Break functions longer than ~30 lines into smaller, well-named private helpers.

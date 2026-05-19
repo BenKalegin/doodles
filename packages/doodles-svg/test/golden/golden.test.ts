@@ -270,6 +270,17 @@ describe("golden: lr-user-bug-repro", () => {
         loaded.L.nodes("Tenant Postgres", "Farm Postgres", "Valkey / Redis", "DynamoDB").noOverlap();
     });
 
+    it("FA's cross-cluster edges don't cross the in-cluster middleware chain", () => {
+        // FastAPI app has two kinds of forward successors: MW1 (next link in
+        // the same intra-cluster chain) and R1..R9 (cross-cluster fan-out to
+        // Routers). The cross-cluster edges used to route through MW1/MW2/MW3
+        // because they exited FA on the same face as the chain edge. They now
+        // exit on the perpendicular face for a clear path around the cluster.
+        loaded.L.edge({fromText: "FastAPI app", toText: "chat v1 + sync"}).doesNotCross("RequestIdMiddleware", "StatsdMiddleWare", "security_headers");
+        loaded.L.edge({fromText: "FastAPI app", toText: "chat v2 SSE"}).doesNotCross("RequestIdMiddleware", "StatsdMiddleWare", "security_headers");
+        loaded.L.edge({fromText: "FastAPI app", toText: "sessions CRUD"}).doesNotCross("RequestIdMiddleware", "StatsdMiddleWare", "security_headers");
+    });
+
     it("svg snapshot", () => {
         expect(loaded.svg).toMatchSnapshot();
     });

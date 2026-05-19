@@ -289,6 +289,7 @@ function adjustPortAlignments(
     }
 
     applyDecisionNodeConvention(dia, assignments, hints);
+    applyCrossClusterExitFace(dia, assignments, hints);
 
     const ports: DiagramInternal["ports"] = {...dia.ports};
     for (const a of assignments) {
@@ -356,6 +357,66 @@ function decisionOutputFace(
         return a.dy > 0 ? PortAlignment.Bottom : PortAlignment.Top;
     }
     return mainOutputSide;
+}
+
+/**
+ * Route cross-cluster outgoing edges via the perpendicular face when the source
+ * also has intra-cluster forward successors blocking the main face.
+ *
+ * Without this, a node with both an in-cluster chain successor (e.g.,
+ * `FastAPI app → RequestIdMiddleware`) and cross-cluster fan-out (e.g.,
+ * `FastAPI app → R1..R9` in another cluster) exits all edges through the same
+ * face, and the cross-cluster polylines re-enter the in-cluster siblings on the
+ * way to their actual target. Switching the cross-cluster edges to the
+ * perpendicular face gives them a clear path around the source's cluster.
+ */
+function applyCrossClusterExitFace(
+    dia: Diagram & DiagramInternal,
+    assignments: LinkAssignment[],
+    hints: LayoutHints,
+): void {
+    const vertical = hints.direction === LayoutDirection.TopToBottom
+        || hints.direction === LayoutDirection.BottomToTop;
+    const reversed = hints.direction === LayoutDirection.BottomToTop
+        || hints.direction === LayoutDirection.RightToLeft;
+    const mainOutputSide = vertical
+        ? (reversed ? PortAlignment.Top : PortAlignment.Bottom)
+        : (reversed ? PortAlignment.Left : PortAlignment.Right);
+
+    const nodeParents: { [id: string]: string } = {};
+    for (const el of Object.values(dia.elements)) {
+        if (el?.type !== ElementType.Cluster) continue;
+        for (const memberId of el.memberNodeIds ?? []) {
+            const member = dia.elements[memberId];
+            if (member?.type !== ElementType.Cluster) nodeParents[memberId] = el.id;
+        }
+    }
+
+    const outgoingByNode: { [id: string]: LinkAssignment[] } = {};
+    for (const a of assignments) {
+        (outgoingByNode[a.srcNodeId] ??= []).push(a);
+    }
+
+    for (const [srcId, outgoing] of Object.entries(outgoingByNode)) {
+        const srcCluster = nodeParents[srcId];
+        if (!srcCluster) continue;
+        const hasIntraClusterOnMainFace = outgoing.some(a =>
+            nodeParents[a.tgtNodeId] === srcCluster && a.srcAlign === mainOutputSide
+        );
+        if (!hasIntraClusterOnMainFace) continue;
+        for (const a of outgoing) {
+            if (nodeParents[a.tgtNodeId] === srcCluster) continue;
+            if (a.srcAlign !== mainOutputSide) continue;
+            a.srcAlign = perpendicularExitFace(a, vertical);
+        }
+    }
+}
+
+function perpendicularExitFace(a: LinkAssignment, vertical: boolean): PortAlignment {
+    if (vertical) {
+        return a.dx >= 0 ? PortAlignment.Right : PortAlignment.Left;
+    }
+    return a.dy >= 0 ? PortAlignment.Bottom : PortAlignment.Top;
 }
 
 function distributePortsAlongSides(

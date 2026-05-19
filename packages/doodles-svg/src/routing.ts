@@ -32,11 +32,27 @@ function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens): Ed
     if (!endpoints) return undefined;
     const {sourceNodeId, targetNodeId, from, to, srcAlign, tgtAlign, srcBounds, tgtBounds} = endpoints;
 
-    const polyline = orthogonalRoute(from, to, srcAlign, tgtAlign, srcBounds, tgtBounds);
+    // Detour-obstacle bounds: when the endpoint sits inside a cluster, the
+    // detour must clear the *cluster*, not just the leaf — otherwise a route
+    // exiting a node's Bottom face re-enters the cluster on the way to a
+    // sibling cluster's leaf.
+    const srcContainerBounds = clusterContainingBounds(sourceNodeId, diagram) ?? srcBounds;
+    const tgtContainerBounds = clusterContainingBounds(targetNodeId, diagram) ?? tgtBounds;
+
+    const polyline = orthogonalRoute(from, to, srcAlign, tgtAlign, srcContainerBounds, tgtContainerBounds);
     const label = String(link.text ?? "");
     const base: EdgeRoute = {edgeId: String(link.id), sourceNodeId, targetNodeId, polyline, label};
     if (!label) return base;
     return {...base, labelBox: measureLabelBox(label, polylineMidpoint(polyline), theme)};
+}
+
+function clusterContainingBounds(nodeId: string, diagram: RenderableDoodle): Bounds | undefined {
+    for (const el of Object.values(diagram.elements)) {
+        if (el?.type !== ElementType.Cluster) continue;
+        if (!(el as {memberNodeIds?: string[]}).memberNodeIds?.includes(nodeId)) continue;
+        return diagram.nodes[el.id]?.bounds;
+    }
+    return undefined;
 }
 
 interface ResolvedEndpoints {
@@ -198,29 +214,52 @@ function crossAxisBackEdgeDetour(
     srcBounds: Bounds,
     tgtBounds: Bounds,
 ): Coordinate[] {
-    const right = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
-    const left = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
-    const top = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
-    const bottom = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
-    const exit = perpendicularStepOut(from, srcAlign, {right, left, top, bottom});
-    const entry = perpendicularStepOut(to, tgtAlign, {right, left, top, bottom});
+    // For cross-axis cases the exit step is anchored to the source's outer
+    // lines and the entry step to the target's — using a single combined
+    // outer would push the entry past the *source* cluster on the wrong side
+    // when source and target are in separate clusters, creating a long
+    // back-segment that re-enters the source cluster's row.
+    const srcOuter = outerLinesOf(srcBounds);
+    const tgtOuter = outerLinesOf(tgtBounds);
+    const exit = perpendicularStepOut(from, srcAlign, srcOuter);
+    const entry = perpendicularStepOut(to, tgtAlign, tgtOuter);
 
     const srcVertical = isVerticalAlignment(srcAlign);
     const tgtVertical = isVerticalAlignment(tgtAlign);
     if (srcVertical !== tgtVertical) {
-        // Cross-axis: 4 segments. The bend sits at the corner of the two
-        // perpendicular outer lines — outside both bboxes by construction.
-        const corner = {x: exit.x, y: entry.y};
+        // Cross-axis: 4 segments. Two corner choices fit the L-shape:
+        //   A = (exit.x, entry.y) — exit-first then horizontal to entry
+        //   B = (entry.x, exit.y) — horizontal first to entry's column, then exit
+        // B keeps the long segment at exit.y (just outside the source cluster),
+        // which is obstacle-free by construction; A keeps the long segment at
+        // entry.y (target's row), which on a Bottom→Left back-edge cuts back
+        // through the source cluster's row and hits sibling leaves.
+        const corner = {x: entry.x, y: exit.y};
         return [from, exit, corner, entry, to];
     }
     // Same axis, opposite faces (Right↔Left or Top↔Bottom): 5 segments. Need
     // to traverse cross-axis between source's outer line and target's outer.
+    // The combined outer is appropriate here because the cross-axis sweep has
+    // to clear both bboxes on the same side.
+    const right = Math.max(srcOuter.right, tgtOuter.right);
+    const left = Math.min(srcOuter.left, tgtOuter.left);
+    const top = Math.min(srcOuter.top, tgtOuter.top);
+    const bottom = Math.max(srcOuter.bottom, tgtOuter.bottom);
     if (srcVertical) {
         const sideX = pickDetourSide(from.x, to.x, left, right);
         return [from, exit, {x: sideX, y: exit.y}, {x: sideX, y: entry.y}, entry, to];
     }
     const sideY = pickDetourSide(from.y, to.y, top, bottom);
     return [from, exit, {x: exit.x, y: sideY}, {x: entry.x, y: sideY}, entry, to];
+}
+
+function outerLinesOf(b: Bounds): OuterLines {
+    return {
+        right: b.x + b.width + SAME_FACE_DETOUR_PAD,
+        left: b.x - SAME_FACE_DETOUR_PAD,
+        top: b.y - SAME_FACE_DETOUR_PAD,
+        bottom: b.y + b.height + SAME_FACE_DETOUR_PAD,
+    };
 }
 
 interface OuterLines {right: number; left: number; top: number; bottom: number}
