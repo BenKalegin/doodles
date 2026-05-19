@@ -424,6 +424,32 @@ describe("golden: lr-cycle-with-back-edges", () => {
     });
 });
 
+describe("golden: lr-fork-linear-tail", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-fork-linear-tail"); });
+
+    // Rule: docs/layout-rules/linear-tail-after-fork.md
+    // A linear chain hanging off a fork (Cheshire → Caterpillar → Gryphon)
+    // must sit on one shared row. Filigree picks an independent y per layer,
+    // producing a staircase when the chain extends past the fork's other
+    // branch — doodles pins the chain to its first node's y.
+    it("Cheshire → Caterpillar → Gryphon linear tail shares one row", () => {
+        loaded.L.nodes("Cheshire", "Caterpillar", "Gryphon").sameRow();
+    });
+
+    it("trunk Alice → Hatter → Dormouse shares one row", () => {
+        loaded.L.nodes("Alice", "Hatter", "Dormouse").sameRow();
+    });
+
+    it("tail sits below trunk (not above)", () => {
+        loaded.L.node("Cheshire").below("Hatter");
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -438,6 +464,7 @@ describe("golden: fixture inventory", () => {
             "lr-cluster-no-internal-edges",
             "lr-branched-chain",
             "lr-cycle-with-back-edges",
+            "lr-fork-linear-tail",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);

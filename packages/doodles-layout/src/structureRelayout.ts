@@ -98,6 +98,7 @@ export async function relayoutStructure<T extends Diagram>(
         ...Object.keys(nodeParents),
     ]);
     wrapLongLayoutsIntoRows(newNodes, resolvedHints, excludeFromWrapping);
+    alignChainsToForkRow(newNodes, edges, resolvedHints, nodeParents);
 
     const realignedPorts = adjustPortAlignments(dia, newNodes, resolvedHints);
     const newPorts = distributePortsAlongSides(dia, realignedPorts, newNodes);
@@ -216,6 +217,94 @@ function wrapLongLayoutsIntoRows(
         const offsetInLayer = b.y - (colMinY.get(colIndex) ?? b.y);
         b.x = baseX + col * colWidth;
         b.y = baseY + (rowOffsets.get(row) ?? 0) + offsetInLayer;
+    }
+}
+
+/**
+ * Pin linear chains hanging off forks to a shared y, so each chain reads as
+ * one row. Filigree's layered algorithm centers each layer's nodes around the
+ * edge-bend midline, which leaves single-occupant downstream layers free to
+ * "recenter" — a chain `Cheshire → Caterpillar → Gryphon` ends up staircased
+ * because each unconstrained node drifts back toward the trunk midline.
+ *
+ * Rule (see docs/layout-rules/linear-tail-after-fork.md):
+ *   At every fork F (outdeg ≥ 2), the **first-declared** child stays on F's
+ *   row (`first-child.y := F.y`), and that pinning propagates forward through
+ *   the linear continuation. Non-first children start their own row at their
+ *   own current y, and the chain from each one stays pinned to that y.
+ *
+ * "Linear continuation" = a forward walk through nodes that are both single-in
+ * and single-out (terminals allowed at the tail). Stops at any merge or fork.
+ *
+ * Source-order matters: it's how the human author signaled "this branch is
+ * the trunk continuation." `relayoutStructure` builds `edges` by iterating
+ * `dia.elements` in insertion order, so `outEdges[forkId][0]` is the
+ * first-declared child without any extra work.
+ */
+function alignChainsToForkRow(
+    nodes: DiagramInternal["nodes"],
+    edges: readonly LayoutLink[],
+    hints: LayoutHints,
+    nodeParents: { [id: string]: string },
+): void {
+    // Rule applies to horizontal flow only. In TB/BT layouts, "first-declared
+    // child stays on fork's row" would collapse decision diamonds' below-target
+    // semantics — both branches are supposed to go down from the decision, not
+    // one stays on the row.
+    const horizontal = hints.direction === LayoutDirection.LeftToRight
+        || hints.direction === LayoutDirection.RightToLeft;
+    if (!horizontal) return;
+
+    // Cluster-internal nodes have their y constrained by the cluster's bbox.
+    // Pinning across that boundary would move a member outside its cluster
+    // without growing the cluster, breaking subgraph containment.
+    const isClusterInternal = (id: string): boolean => nodeParents[id] !== undefined;
+
+    const outEdges = new Map<string, string[]>();
+    const inDeg = new Map<string, number>();
+    for (const edge of edges) {
+        const list = outEdges.get(edge.source);
+        if (list) list.push(edge.target);
+        else outEdges.set(edge.source, [edge.target]);
+        inDeg.set(edge.target, (inDeg.get(edge.target) ?? 0) + 1);
+    }
+    for (const [forkId, children] of outEdges) {
+        if (children.length < 2) continue;
+        if (isClusterInternal(forkId)) continue;
+        const forkY = nodes[forkId]?.bounds?.y;
+        if (forkY === undefined) continue;
+        pinChainToY(children[0]!, forkY, nodes, outEdges, inDeg, isClusterInternal);
+        for (let i = 1; i < children.length; i++) {
+            const child = children[i]!;
+            if (isClusterInternal(child)) continue;
+            const childY = nodes[child]?.bounds?.y;
+            if (childY === undefined) continue;
+            pinChainToY(child, childY, nodes, outEdges, inDeg, isClusterInternal);
+        }
+    }
+}
+
+function pinChainToY(
+    start: string,
+    targetY: number,
+    nodes: DiagramInternal["nodes"],
+    outEdges: Map<string, string[]>,
+    inDeg: Map<string, number>,
+    isClusterInternal: (id: string) => boolean,
+): void {
+    const visited = new Set<string>();
+    let cur: string | undefined = start;
+    while (cur && !visited.has(cur)) {
+        visited.add(cur);
+        if (isClusterInternal(cur)) break;
+        const bounds = nodes[cur]?.bounds;
+        if (!bounds) break;
+        bounds.y = targetY;
+        const out = outEdges.get(cur);
+        if (!out || out.length !== 1) break;
+        const next = out[0]!;
+        if ((inDeg.get(next) ?? 0) !== 1) break;
+        cur = next;
     }
 }
 

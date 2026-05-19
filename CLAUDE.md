@@ -20,11 +20,22 @@ pnpm vitest run packages/doodles-svg/test/golden/golden.test.ts
 
 Doodles' job is producing correct layouts; the DSL-based golden tests are the source of truth, not visual inspection. **Never** fix a layout bug by eyeballing the rendered SVG and iterating on code. The order is always:
 
-1. **Reproduce in a test first.** Add a `.mmd` fixture under `packages/doodles-svg/test/golden/fixtures/` that reproduces the failing layout, and add a describe block in `golden.test.ts` with DSL assertions (`.noOverlap()`, `.noNodeIntersection()`, `.noLabelOverlap()`, `.leftOf()`, `.centeredOver()`, etc.) that **fail** on the current code. Run the test and confirm it's red.
+1. **Reproduce in a test first.** Add a **`.mmd` fixture** under `packages/doodles-svg/test/golden/fixtures/` that reproduces the failing layout, **with anonymized labels** (see below), and add a describe block in `golden.test.ts` with DSL assertions (`.noOverlap()`, `.noNodeIntersection()`, `.noLabelOverlap()`, `.leftOf()`, `.centeredOver()`, etc.) that **fail** on the current code. Run the test and confirm it's red.
 2. **Make the test green.** Change the layout code until the test passes. Don't rebuild downstream consumers (clouddiagram, axonize) or open the rendered SVG to verify — the test is the verification.
 3. **Keep the test.** The new test stays as a permanent regression check.
+4. **Render the example SVG.** `node scripts/render-rule-example.mjs <fixture-name>` extracts the rendered SVG from the golden snapshot and writes `docs/layout-rules/images/<fixture>.svg`. Commit it.
+5. **Document the rule.** Add or update a file under `docs/layout-rules/` following the structure in `docs/layout-rules/README.md`, and link it from that README's index. A layout fix without a rule file is incomplete.
 
-Why this matters: visual inspection misses bugs that the strict DSL catches (`.leftOf` passes when x=1.0/1.01 but boxes still overlap), wastes tokens on rebuild loops, and produces fixes that pass one screenshot but regress on another diagram. DSL assertions describe *what humans expect to see* in engine-agnostic terms — they survive layout-engine swaps and structural refactors.
+### Fixture anonymization (mandatory)
+
+Real-world labels never appear in fixtures. Two schemes:
+
+- **Topology rules** (placement, routing, ordering): use **Alice in Wonderland** names — `Alice`, `Hatter`, `Cheshire`, `Caterpillar`, `Gryphon`, `Dormouse`, `Mouse`, `Knave`, `Duchess`, `Mock`, `Pat`, `Bill`. Default for everything.
+- **Width-sensitive rules** (wrapping, column sizing, text metrics): use **`nodeXXXX`** width-matched to the original label, e.g. `node1234[node12345678]` for a 12-char label.
+
+If you're unsure, the rule is topology. Use Alice. See `docs/layout-rules/README.md` for the full convention.
+
+Why this matters: visual inspection misses bugs that the strict DSL catches (`.leftOf` passes when x=1.0/1.01 but boxes still overlap), wastes tokens on rebuild loops, and produces fixes that pass one screenshot but regress on another diagram. DSL assertions describe *what humans expect to see* in engine-agnostic terms — they survive layout-engine swaps and structural refactors. Anonymization keeps the test about topology, not about whatever real-world diagram surfaced the bug.
 
 DSL methods available — see `packages/doodles-layout/src/layoutTesting.ts` for the full surface. Common ones: positional (`leftOf`/`rightOf`/`above`/`below`, `orderedLeftToRight`/`orderedTopToBottom`, `sameRow`/`sameColumn`, `centeredOver`, `centeredHorizontallyWith`), structural (`cluster().contains()`, `insideCluster`), edge (`edges().count()`, `noCrossings`, `noNodeIntersection`, `noLabelOverlap`), bbox (`nodes(...).noOverlap()`). If the bug needs an assertion that doesn't exist yet, add it to the DSL first.
 
