@@ -165,6 +165,13 @@ export interface EdgeAssert {
     /** This edge's routed polyline does not enter the interior of any of the
      *  named non-endpoint nodes. Requires routes supplied to `layoutFor`. */
     doesNotCross(...nodeTexts: string[]): EdgeAssert;
+    /** y of the source-side port attach point of the routed polyline. Use to
+     *  assert port ordering, e.g., ports on the same face should be sorted
+     *  by target y to avoid same-source crossings. */
+    sourcePortY(): number;
+    /** Asserts the routed polyline has no more than `maxPoints` vertices.
+     *  A simple intra-cluster L should be 3–4 points; a U-detour is 5+. */
+    polylineLengthAtMost(maxPoints: number): EdgeAssert;
 }
 
 export interface EdgesAssert {
@@ -479,6 +486,28 @@ export function layoutFor(result: LaidOutDiagram, options: LayoutForOptions = {}
                 if (actual !== label) {
                     throw new Error(
                         `Expected edge "${q.fromText}" → "${q.toText}" label ${JSON.stringify(label)}, got ${JSON.stringify(actual)}`
+                    );
+                }
+                return api;
+            },
+            sourcePortY() {
+                const routes = options.routes;
+                if (!routes) throw new Error("sourcePortY() requires routes supplied to layoutFor()");
+                const route = routes.find(r => r.edgeId === link.id);
+                if (!route || route.polyline.length === 0) {
+                    throw new Error(`No route found for edge "${q.fromText}" → "${q.toText}"`);
+                }
+                return route.polyline[0]!.y;
+            },
+            polylineLengthAtMost(maxPoints) {
+                const routes = options.routes;
+                if (!routes) throw new Error("polylineLengthAtMost() requires routes supplied to layoutFor()");
+                const route = routes.find(r => r.edgeId === link.id);
+                if (!route) throw new Error(`No route found for edge "${q.fromText}" → "${q.toText}"`);
+                if (route.polyline.length > maxPoints) {
+                    const polyStr = route.polyline.map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(" → ");
+                    throw new Error(
+                        `Edge "${q.fromText}" → "${q.toText}" polyline has ${route.polyline.length} points, max ${maxPoints}\n  polyline: ${polyStr}`
                     );
                 }
                 return api;

@@ -270,6 +270,50 @@ describe("golden: lr-user-bug-repro", () => {
         loaded.L.nodes("Tenant Postgres", "Farm Postgres", "Valkey / Redis", "DynamoDB").noOverlap();
     });
 
+    it("no DeepAgentService outgoing edge crosses the Tool factory sibling", () => {
+        for (const to of ["BedrockModelClient", "Tenant Postgres", "LangSmith"]) {
+            loaded.L.edge({fromText: "DeepAgentService", toText: to}).doesNotCross("Tool factory");
+        }
+    });
+
+    it("DeepAgentService → Tool factory is a direct intra-cluster route, not a U-turn", () => {
+        // Intra-cluster routes must use a midpoint pivot, not a cluster-clearance
+        // pivot — otherwise the elbow overshoots past the cluster's right edge
+        // and the route U-turns back into the target.
+        loaded.L.edge({fromText: "DeepAgentService", toText: "Tool factory"}).doesNotCross("Tool factory");
+        loaded.L.edge({fromText: "AgentService", toText: "Tool factory"}).doesNotCross("Tool factory");
+        // A direct intra-cluster L is at most 3 segments (4 points). A U-turn
+        // would need 5+ points.
+        loaded.L.edge({fromText: "DeepAgentService", toText: "Tool factory"}).polylineLengthAtMost(4);
+        loaded.L.edge({fromText: "AgentService", toText: "Tool factory"}).polylineLengthAtMost(4);
+    });
+
+    it("DeepAgentService's right-side ports are ordered by target y", () => {
+        // Bug: AGDA's two right-side outgoing edges crossed each other near
+        // the source because the port ratios didn't follow target y. The
+        // edge to a target with smaller y should leave from a smaller port_y
+        // than the edge to a target with larger y.
+        const portYForTarget = (target: string): number =>
+            loaded.L.edge({fromText: "DeepAgentService", toText: target}).sourcePortY();
+        const targets = [
+            {name: "BedrockModelClient", tgtY: loaded.L.bounds("BedrockModelClient").y},
+            {name: "Tenant Postgres", tgtY: loaded.L.bounds("Tenant Postgres").y},
+            {name: "LangSmith", tgtY: loaded.L.bounds("LangSmith").y},
+        ];
+        const sortedByTgtY = [...targets].sort((a, b) => a.tgtY - b.tgtY);
+        let prevPortY = -Infinity;
+        for (const t of sortedByTgtY) {
+            const py = portYForTarget(t.name);
+            if (py < prevPortY) {
+                throw new Error(
+                    `port_y for AGDA→${t.name} (tgt y=${t.tgtY.toFixed(0)}, port_y=${py.toFixed(0)}) ` +
+                    `out of order with previous port_y=${prevPortY.toFixed(0)} — ports should be sorted by target y`
+                );
+            }
+            prevPortY = py;
+        }
+    });
+
     it("no edge pierces the AgentService or DeepAgentService nodes vertically", () => {
         // Visual bug: a vertical edge stroke went straight through both Services
         // top nodes from somewhere outside the cluster down to nodes below.

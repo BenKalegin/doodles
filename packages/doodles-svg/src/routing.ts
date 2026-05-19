@@ -32,25 +32,32 @@ function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens): Ed
     if (!endpoints) return undefined;
     const {sourceNodeId, targetNodeId, from, to, srcAlign, tgtAlign, srcBounds, tgtBounds} = endpoints;
 
-    // Detour-obstacle bounds: when the endpoint sits inside a cluster, the
-    // detour must clear the *cluster*, not just the leaf — otherwise a route
-    // exiting a node's Bottom face re-enters the cluster on the way to a
-    // sibling cluster's leaf.
-    const srcContainerBounds = clusterContainingBounds(sourceNodeId, diagram) ?? srcBounds;
-    const tgtContainerBounds = clusterContainingBounds(targetNodeId, diagram) ?? tgtBounds;
+    // Detour bounds. Cross-cluster: use cluster bounds so the route clears
+    // sibling leaves on the way out of the source's cluster (or into the
+    // target's). Intra-cluster: use leaf bounds — pushing the pivot past the
+    // cluster's outer edge would overshoot the target sibling and U-turn.
+    const srcCluster = clusterContaining(sourceNodeId, diagram);
+    const tgtCluster = clusterContaining(targetNodeId, diagram);
+    const sameContainer = srcCluster !== undefined && srcCluster === tgtCluster;
+    const srcDetourBounds = sameContainer
+        ? srcBounds
+        : (srcCluster !== undefined ? diagram.nodes[srcCluster]?.bounds ?? srcBounds : srcBounds);
+    const tgtDetourBounds = sameContainer
+        ? tgtBounds
+        : (tgtCluster !== undefined ? diagram.nodes[tgtCluster]?.bounds ?? tgtBounds : tgtBounds);
 
-    const polyline = orthogonalRoute(from, to, srcAlign, tgtAlign, srcContainerBounds, tgtContainerBounds);
+    const polyline = orthogonalRoute(from, to, srcAlign, tgtAlign, srcDetourBounds, tgtDetourBounds);
     const label = String(link.text ?? "");
     const base: EdgeRoute = {edgeId: String(link.id), sourceNodeId, targetNodeId, polyline, label};
     if (!label) return base;
     return {...base, labelBox: measureLabelBox(label, polylineMidpoint(polyline), theme)};
 }
 
-function clusterContainingBounds(nodeId: string, diagram: RenderableDoodle): Bounds | undefined {
+function clusterContaining(nodeId: string, diagram: RenderableDoodle): string | undefined {
     for (const el of Object.values(diagram.elements)) {
         if (el?.type !== ElementType.Cluster) continue;
         if (!(el as {memberNodeIds?: string[]}).memberNodeIds?.includes(nodeId)) continue;
-        return diagram.nodes[el.id]?.bounds;
+        return String(el.id);
     }
     return undefined;
 }
@@ -161,11 +168,11 @@ function orthogonalRoute(
     const tgtHorizontal = isHorizontalAlignment(tgtAlign);
 
     if (srcVertical && tgtVertical) {
-        const midY = from.y + dy / 2;
+        const midY = pivotBetweenContainers(from.y, to.y, srcBounds, tgtBounds, "y", srcAlign!);
         return [from, {x: from.x, y: midY}, {x: to.x, y: midY}, to];
     }
     if (srcHorizontal && tgtHorizontal) {
-        const midX = from.x + dx / 2;
+        const midX = pivotBetweenContainers(from.x, to.x, srcBounds, tgtBounds, "x", srcAlign!);
         return [from, {x: midX, y: from.y}, {x: midX, y: to.y}, to];
     }
     if (srcVertical && tgtHorizontal) {
@@ -251,6 +258,47 @@ function crossAxisBackEdgeDetour(
     }
     const sideY = pickDetourSide(from.y, to.y, top, bottom);
     return [from, exit, {x: exit.x, y: sideY}, {x: entry.x, y: sideY}, entry, to];
+}
+
+/**
+ * Pick the elbow pivot for a same-axis L-route so it lands *outside* the
+ * source's container on the exit side, not at the geometric midpoint.
+ *
+ * The naive midpoint lands inside the source's container when the container
+ * is wide enough — and intra-container siblings on the exit face (e.g., a
+ * Tool factory sitting just to the right of an AgentService) end up sliced
+ * by the vertical leg of the L. Picking a pivot past the container's outer
+ * edge guarantees the leg clears any sibling without the router needing
+ * obstacle awareness.
+ *
+ * The pivot is clamped to lie between source and target so it never overshoots
+ * past the target's far side (which would re-introduce a back-edge).
+ */
+function pivotBetweenContainers(
+    fromCoord: number,
+    toCoord: number,
+    srcBounds: Bounds,
+    tgtBounds: Bounds,
+    axis: "x" | "y",
+    srcAlign: PortAlignment,
+): number {
+    const midpoint = (fromCoord + toCoord) / 2;
+    const forward = toCoord > fromCoord ? 1 : -1;
+    const srcOuter = axis === "x"
+        ? (srcAlign === PortAlignment.Right ? srcBounds.x + srcBounds.width : srcBounds.x)
+        : (srcAlign === PortAlignment.Bottom ? srcBounds.y + srcBounds.height : srcBounds.y);
+    const tgtOuter = axis === "x"
+        ? (toCoord > fromCoord ? tgtBounds.x : tgtBounds.x + tgtBounds.width)
+        : (toCoord > fromCoord ? tgtBounds.y : tgtBounds.y + tgtBounds.height);
+    // Lower bound: past source container's exit edge.
+    const lower = srcOuter + forward * SAME_FACE_DETOUR_PAD;
+    // Upper bound: stop before the target container's near edge so we don't
+    // overshoot into it.
+    const upper = tgtOuter - forward * SAME_FACE_DETOUR_PAD;
+    const inRange = forward > 0
+        ? Math.max(midpoint, lower)
+        : Math.min(midpoint, lower);
+    return forward > 0 ? Math.min(inRange, upper) : Math.max(inRange, upper);
 }
 
 function outerLinesOf(b: Bounds): OuterLines {
