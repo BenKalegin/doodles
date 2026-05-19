@@ -7,6 +7,8 @@ const DEFAULT_CENTERED_TOLERANCE_PX = 4;
 // segments that graze a node's perimeter from registering as an intersection
 // (port attach points live exactly on the perimeter by design).
 const NODE_INTERIOR_INSET_PX = 0.5;
+// Tolerance for "is this segment axis-aligned" checks in the DSL.
+const COLLINEAR_TOLERANCE_PX_DSL = 0.5;
 
 /**
  * Two input shapes are accepted:
@@ -181,6 +183,11 @@ export interface EdgeAssert {
     /** Asserts the routed polyline has no more than `maxPoints` vertices.
      *  A simple intra-cluster L should be 3–4 points; a U-detour is 5+. */
     polylineLengthAtMost(maxPoints: number): EdgeAssert;
+    /** Asserts the routed polyline approaches the target *perpendicular* to
+     *  the named side — i.e. the final segment is at right angles to that
+     *  side rather than running along it. Catches back-edge detours that
+     *  enter the target by sliding along its top/bottom border. */
+    entersTargetPerpendicularTo(side: PortAlignment): EdgeAssert;
 }
 
 export interface EdgesAssert {
@@ -513,6 +520,31 @@ export function layoutFor(result: LaidOutDiagram, options: LayoutForOptions = {}
                     throw new Error(`No route found for edge "${q.fromText}" → "${q.toText}"`);
                 }
                 return route.polyline[0]!.y;
+            },
+            entersTargetPerpendicularTo(side) {
+                const routes = options.routes;
+                if (!routes) throw new Error("entersTargetPerpendicularTo() requires routes supplied to layoutFor()");
+                const route = routes.find(r => r.edgeId === link.id);
+                if (!route || route.polyline.length < 2) {
+                    throw new Error(`No route found for edge "${q.fromText}" → "${q.toText}"`);
+                }
+                const tail = route.polyline[route.polyline.length - 1]!;
+                const beforeTail = route.polyline[route.polyline.length - 2]!;
+                const isHorizontalApproach = Math.abs(tail.y - beforeTail.y) < COLLINEAR_TOLERANCE_PX_DSL;
+                const isVerticalApproach = Math.abs(tail.x - beforeTail.x) < COLLINEAR_TOLERANCE_PX_DSL;
+                const sidePerpendicularToHorizontal = side === PortAlignment.Top || side === PortAlignment.Bottom;
+                const expectedHorizontal = sidePerpendicularToHorizontal === false; // approach Left/Right side perpendicular = horizontal
+                if (expectedHorizontal && !isHorizontalApproach) {
+                    throw new Error(
+                        `Edge "${q.fromText}" → "${q.toText}" doesn't approach ${PortAlignment[side]} side perpendicularly — last segment is vertical (slides along side instead of entering)`
+                    );
+                }
+                if (!expectedHorizontal && !isVerticalApproach) {
+                    throw new Error(
+                        `Edge "${q.fromText}" → "${q.toText}" doesn't approach ${PortAlignment[side]} side perpendicularly — last segment is horizontal (slides along side instead of entering)`
+                    );
+                }
+                return api;
             },
             polylineLengthAtMost(maxPoints) {
                 const routes = options.routes;

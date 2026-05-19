@@ -1,0 +1,12 @@
+flowchart LR
+    R[User request] --> AUTH[Auth + tenant context]
+    AUTH --> SS[Session create / lookup]
+    SS --> SEARCH[search_agents]
+    SEARCH --> BUILD[build_deep_agent]
+    BUILD --> LLM1[Supervisor LLM call]
+    LLM1 -->|tool_call| TOOL[Tool / subagent]
+    TOOL --> LLM2[Subagent LLM call]
+    LLM2 --> LLM1
+    LLM1 --> FU[Followups]
+    FU --> PERSIST[add_messages]
+    PERSIST --> CLIENT[SSE close]

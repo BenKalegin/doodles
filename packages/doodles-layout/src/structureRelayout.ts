@@ -280,17 +280,32 @@ function adjustPortAlignments(
             srcAlign = forward
                 ? (reversed ? PortAlignment.Top : PortAlignment.Bottom)
                 : (reversed ? PortAlignment.Bottom : PortAlignment.Top);
+            // Back-edges in a TB/BT layout enter the target on Left so the
+            // U-detour has a clear cross-axis face — Left is universally free
+            // since the layered algorithm fills the principal axis (top↔bottom).
             tgtAlign = forward
                 ? (reversed ? PortAlignment.Bottom : PortAlignment.Top)
                 : PortAlignment.Left;
         } else {
             const forward = reversed ? dx <= 0 : dx >= 0;
+            // Forward edges keep the natural in-flow face (Right→Left for LR,
+            // Left→Right for RL). Back-edges exit on Top (away from the
+            // principal axis so the route clears every node in source's row).
+            // The target-face choice depends on whether source and target are
+            // in the same row:
+            //   - same-row → Top: 3-segment U over the row that enters target
+            //     perpendicular to its top through the row gap.
+            //   - cross-row → Left: cross-axis detour that enters perpendicular
+            //     to target's left side. Different from same-row so multiple
+            //     back-edges to one target don't all collapse onto the same
+            //     "down at tgtOuter.left" channel and visually overlap.
+            const sameRow = Math.abs(dy) <= CROSS_ROW_DY_THRESHOLD_PX;
             srcAlign = forward
                 ? (reversed ? PortAlignment.Left : PortAlignment.Right)
-                : (reversed ? PortAlignment.Right : PortAlignment.Left);
+                : PortAlignment.Top;
             tgtAlign = forward
                 ? (reversed ? PortAlignment.Right : PortAlignment.Left)
-                : PortAlignment.Top;
+                : (sameRow ? PortAlignment.Top : PortAlignment.Left);
         }
         assignments.push({
             port1: el.port1, port2: el.port2,

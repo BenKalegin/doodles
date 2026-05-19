@@ -389,6 +389,41 @@ describe("golden: lr-branched-chain", () => {
     });
 });
 
+describe("golden: lr-cycle-with-back-edges", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-cycle-with-back-edges"); });
+
+    it("BUILD → LLM1 back-edge doesn't cross intermediate row-0 nodes", () => {
+        // BUILD ends up at the end of row 0; LLM1 starts row 1. The back-edge
+        // used to route Left-then-Top, slicing through every row-0 node
+        // between BUILD and LLM1 (User request, Auth, Session, search_agents).
+        loaded.L.edge({fromText: "build_deep_agent", toText: "Supervisor LLM call"})
+            .doesNotCross("User request", "Auth + tenant context", "Session create / lookup", "search_agents");
+    });
+
+    it("LLM2 → LLM1 same-row back-edge doesn't cross Tool / subagent", () => {
+        // LLM2 sits to the right of LLM1 in the same row with TOOL between them.
+        // The back-edge needs to detour above or below TOOL, not slice through.
+        loaded.L.edge({fromText: "Subagent LLM call", toText: "Supervisor LLM call"})
+            .doesNotCross("Tool / subagent");
+    });
+
+    it("back-edges enter targets perpendicular to the receiving side, not sliding along the top border", () => {
+        // Cross-row back-edge enters via the Left face (perpendicular = horizontal).
+        loaded.L.edge({fromText: "build_deep_agent", toText: "Supervisor LLM call"})
+            .entersTargetPerpendicularTo(PortAlignment.Left);
+        // Same-row back-edge enters via the Top face (perpendicular = vertical
+        // down through the row gap) so it doesn't share the "down at
+        // tgtOuter.left" channel with the cross-row back-edge.
+        loaded.L.edge({fromText: "Subagent LLM call", toText: "Supervisor LLM call"})
+            .entersTargetPerpendicularTo(PortAlignment.Top);
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -402,6 +437,7 @@ describe("golden: fixture inventory", () => {
             "lr-user-bug-repro",
             "lr-cluster-no-internal-edges",
             "lr-branched-chain",
+            "lr-cycle-with-back-edges",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);

@@ -352,6 +352,17 @@ function sameFaceDetour(
     }
     if (face === PortAlignment.Top) {
         const outerY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
+        // Source-target separated horizontally: 3-segment U that drops straight
+        // into target's top from above. The "down" segment lives in the gap
+        // between source's column and target's column, so it doesn't slide
+        // along the target's top border.
+        const horizontalGap = Math.abs(from.x - to.x) > (srcBounds.width + tgtBounds.width) / 2;
+        if (horizontalGap) {
+            return [from, {x: from.x, y: outerY}, {x: to.x, y: outerY}, to];
+        }
+        // Source-target stacked vertically (rare same-face case): the original
+        // 5-segment side-detour is needed because a 3-segment route would
+        // collapse straight through both bboxes.
         const leftX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
         const rightX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
         const sideX = pickDetourSide(from.x, to.x, leftX, rightX);
