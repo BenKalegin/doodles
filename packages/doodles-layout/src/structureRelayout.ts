@@ -398,6 +398,7 @@ function adjustPortAlignments(
     }
 
     applyDecisionNodeConvention(dia, assignments, hints);
+    applyCrossRowForkExit(dia, assignments, hints);
     applyCrossClusterExitFace(dia, newNodes, assignments, hints);
 
     const ports: DiagramInternal["ports"] = {...dia.ports};
@@ -471,6 +472,79 @@ function applyDecisionNodeConvention(
         // direct V-H-V route instead of a giant U-detour around the diagram.
         for (const a of outgoingByNode[el.id] ?? []) {
             a.srcAlign = decisionOutputFace(a, vertical, mainOutputSide);
+        }
+    }
+}
+
+// Minimum |dy| for a cross-row forward edge from a fork source to switch to
+// the cross-axis (Bottom/Top) face. Below this, the gutter between source and
+// target is too thin to render a clean perpendicular detour, so the edge
+// stays on the principal in-flow face and accepts an L-bend. 70 sits above
+// the touching-row case (dy = nodeHeight = 60, gutter = 0) and below the
+// nodeSep=120-aware case (dy = 90, gutter = 30).
+const FORK_PERPENDICULAR_EXIT_MIN_DY_PX = 70;
+
+/**
+ * Cross-row forward edges from fork sources (outdeg ≥ 2) exit the source's
+ * cross-axis face instead of the in-flow face. See
+ * docs/layout-rules/fork-cross-row-perpendicular-exit.md.
+ *
+ * Why only forks: a single-out source has no port-conflict on its in-flow
+ * face, so the L-bend off Right (LR) reads fine. A fork puts multiple edges
+ * on the same face — the in-row branch wants the row's natural direction
+ * (Right for LR), while a cross-row branch awkwardly shares it. Routing the
+ * cross-row branch out the cross-axis face separates the two visually, and
+ * lets port distribution order an incoming back-edge on the same face clear
+ * of the outgoing one (avoiding back-edge × cross-row-forward crossings).
+ *
+ * Mirrors `lrBackEdgeFaces` for face selection — same gutter direction
+ * convention, just for forward edges instead of back-edges.
+ */
+function applyCrossRowForkExit(
+    dia: Diagram & DiagramInternal,
+    assignments: LinkAssignment[],
+    hints: LayoutHints,
+): void {
+    const horizontal = hints.direction === LayoutDirection.LeftToRight
+        || hints.direction === LayoutDirection.RightToLeft;
+    if (!horizontal) return;
+    const inFlowFace = hints.direction === LayoutDirection.RightToLeft
+        ? PortAlignment.Left
+        : PortAlignment.Right;
+
+    // Skip cross-cluster edges — applyCrossClusterExitFace runs after this
+    // and has obstacle-aware blocked-face detection (a sibling node directly
+    // below the source can block the Bottom face). Pre-emptively flipping a
+    // cross-cluster edge to Bottom here bypasses that check and risks routing
+    // straight through the sibling.
+    const nodeParents: { [id: string]: string | undefined } = {};
+    for (const el of Object.values(dia.elements)) {
+        if (el?.type !== ElementType.Cluster) continue;
+        for (const memberId of el.memberNodeIds ?? []) {
+            const member = dia.elements[memberId];
+            if (member?.type !== ElementType.Cluster) nodeParents[memberId] = el.id;
+        }
+    }
+    const sameContainer = (a: string, b: string): boolean =>
+        (nodeParents[a] ?? null) === (nodeParents[b] ?? null);
+
+    const outgoingByNode: { [id: string]: LinkAssignment[] } = {};
+    for (const a of assignments) (outgoingByNode[a.srcNodeId] ??= []).push(a);
+
+    for (const a of assignments) {
+        const outgoing = outgoingByNode[a.srcNodeId];
+        if (!outgoing || outgoing.length < 2) continue;
+        if (!sameContainer(a.srcNodeId, a.tgtNodeId)) continue;
+        // Only touch forward edges still on the in-flow face. Back-edges
+        // already routed to cross-axis by lrBackEdgeFaces stay as-is.
+        if (a.srcAlign !== inFlowFace) continue;
+        if (Math.abs(a.dy) <= FORK_PERPENDICULAR_EXIT_MIN_DY_PX) continue;
+        if (a.dy > 0) {
+            a.srcAlign = PortAlignment.Bottom;
+            a.tgtAlign = PortAlignment.Top;
+        } else {
+            a.srcAlign = PortAlignment.Top;
+            a.tgtAlign = PortAlignment.Bottom;
         }
     }
 }

@@ -15,6 +15,7 @@ Skim this index, click into the rule that matches what you're seeing. Each rule 
 
 ### Edge routing
 - [back-edge-gutter-routing](./back-edge-gutter-routing.md) — Back-edges route through the gutter below their source row. Same-row dips below the row; cross-row uses the gutter between the rows. Never through exterior space above row 1.
+- [fork-cross-row-perpendicular-exit](./fork-cross-row-perpendicular-exit.md) — Forward edges from a fork that cross to a different row exit the source's cross-axis face (Bottom/Top), not the in-flow face. Keeps the in-row branch on its natural face and lets port distribution clear incoming back-edges.
 
 ## Conventions
 

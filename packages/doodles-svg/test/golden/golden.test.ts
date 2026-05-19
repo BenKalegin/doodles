@@ -434,6 +434,19 @@ describe("golden: lr-cycle-with-back-edges", () => {
             .hasTargetAlignment(PortAlignment.Bottom);
     });
 
+    it("cross-row forward edge from fork exits Bottom (avoids back-edge crossing)", () => {
+        // Rule: docs/layout-rules/fork-cross-row-perpendicular-exit.md
+        // Supervisor has outdeg=2 (Tool, Followups). Tool is in the same row;
+        // Followups is in a different row down. The cross-row branch exits
+        // Bottom so port distribution can order it clear of the same-face
+        // incoming back-edge from Subagent — no crossing.
+        loaded.L.edge({fromText: "Supervisor LLM call", toText: "Followups"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Top);
+        loaded.L.edge({fromText: "Supervisor LLM call", toText: "Tool / subagent"})
+            .hasSourceAlignment(PortAlignment.Right);
+    });
+
     it("svg snapshot", () => {
         expect(loaded.svg).toMatchSnapshot();
     });
@@ -537,6 +550,39 @@ describe("golden: lr-back-edge-wrap", () => {
     });
 });
 
+describe("golden: lr-fork-cross-row", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-fork-cross-row"); });
+
+    // Rule: docs/layout-rules/fork-cross-row-perpendicular-exit.md
+    // Hatter is a fork (outdeg 2): in-row continuation to Caterpillar, and
+    // a cross-row branch to Knave that the linear-tail-after-fork rule pins
+    // to its own row below. The fixture sets nodespacing:120 so the second
+    // row sits with a real gutter (default 60 gap collapses to touching rows
+    // and degenerates the perpendicular detour).
+    it("Hatter → Knave cross-row branch exits Bottom of fork", () => {
+        loaded.L.edge({fromText: "Hatter", toText: "Knave"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Top);
+    });
+
+    it("Hatter → Caterpillar in-row branch stays on Right (forward axis)", () => {
+        loaded.L.edge({fromText: "Hatter", toText: "Caterpillar"})
+            .hasSourceAlignment(PortAlignment.Right)
+            .hasTargetAlignment(PortAlignment.Left);
+    });
+
+    it("linear-tail rule still pins both chains to their own row", () => {
+        loaded.L.nodes("Alice", "Bill", "Hatter", "Caterpillar", "Dormouse").sameRow();
+        loaded.L.nodes("Knave", "Mouse").sameRow();
+        loaded.L.node("Knave").below("Hatter");
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -554,6 +600,7 @@ describe("golden: fixture inventory", () => {
             "lr-fork-linear-tail",
             "lr-back-edge-gutter",
             "lr-back-edge-wrap",
+            "lr-fork-cross-row",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);
