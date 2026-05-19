@@ -644,6 +644,37 @@ describe("golden: lr-fork-chain-wrap", () => {
     });
 });
 
+describe("golden: lr-fork-skip-rank", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-fork-skip-rank"); });
+
+    // Rule: docs/layout-rules/route-around-intermediate-node.md
+    // Bill (decision diamond) has two outgoing branches:
+    //   Bill → Dormouse (col 2, adjacent — fine on Right face)
+    //   Bill → Caterpillar (col 3, SKIPS Dormouse's column — straight
+    //     horizontal would slice through Dormouse)
+    // The skip-rank edge gets detoured via Bottom → Top through the gutter.
+    it("Bill → Caterpillar (skip-rank) does not cross Dormouse", () => {
+        loaded.L.edge({fromText: "Bill", toText: "Caterpillar"}).doesNotCross("Dormouse");
+    });
+
+    it("Bill → Caterpillar exits Bottom (cross-axis detour)", () => {
+        loaded.L.edge({fromText: "Bill", toText: "Caterpillar"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Top);
+    });
+
+    it("Bill → Dormouse (adjacent) stays on Right face", () => {
+        loaded.L.edge({fromText: "Bill", toText: "Dormouse"})
+            .hasSourceAlignment(PortAlignment.Right)
+            .hasTargetAlignment(PortAlignment.Left);
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -664,6 +695,7 @@ describe("golden: fixture inventory", () => {
             "lr-fork-cross-row",
             "lr-row-mixed-heights",
             "lr-fork-chain-wrap",
+            "lr-fork-skip-rank",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);

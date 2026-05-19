@@ -474,6 +474,7 @@ function adjustPortAlignments(
 
     applyDecisionNodeConvention(dia, assignments, hints);
     applyCrossRowForkExit(dia, assignments, hints);
+    routeAroundIntermediateNodes(dia, newNodes, assignments, hints);
     applyCrossClusterExitFace(dia, newNodes, assignments, hints);
 
     const ports: DiagramInternal["ports"] = {...dia.ports};
@@ -621,6 +622,88 @@ function applyCrossRowForkExit(
             a.srcAlign = PortAlignment.Top;
             a.tgtAlign = PortAlignment.Bottom;
         }
+    }
+}
+
+/**
+ * Forward, same-row edges that would otherwise slice through a non-endpoint
+ * node get detoured via the cross-axis face (Bottom → Top for LR), routing
+ * through the gutter below the source row instead of straight across the
+ * row at the shared centerline.
+ *
+ * Canonical case: a decision diamond `SUM` with two outgoing branches —
+ * `SUM → COMPRESS` (adjacent column) and `SUM → PASS` (skips the COMPRESS
+ * column to land at the merge point). applyDecisionNodeConvention places
+ * both on Right, port distribution gives them slightly different y ratios,
+ * but they both still run horizontal across the row — the longer one slices
+ * through COMPRESS.
+ *
+ * The router has no obstacle awareness. Rather than build that in
+ * comprehensively, we detect the specific case here at port-assignment
+ * time: if the source-target x-strip contains another node whose y-bbox
+ * overlaps the edge's center y, switch the edge to a Bottom → Top detour
+ * through the gutter.
+ *
+ * No-op on TB/BT (a parallel rule for column obstacles would be needed and
+ * hasn't surfaced yet) and on edges already on a cross-axis face from an
+ * earlier pass.
+ */
+function routeAroundIntermediateNodes(
+    dia: Diagram & DiagramInternal,
+    newNodes: DiagramInternal["nodes"],
+    assignments: LinkAssignment[],
+    hints: LayoutHints,
+): void {
+    const horizontal = hints.direction === LayoutDirection.LeftToRight
+        || hints.direction === LayoutDirection.RightToLeft;
+    if (!horizontal) return;
+    const inFlowSrc = hints.direction === LayoutDirection.RightToLeft
+        ? PortAlignment.Left
+        : PortAlignment.Right;
+    const inFlowTgt = hints.direction === LayoutDirection.RightToLeft
+        ? PortAlignment.Right
+        : PortAlignment.Left;
+
+    // Skip cluster-related edges. Cluster routing has its own face-blocking
+    // and cross-cluster exit logic (applyCrossClusterExitFace) that runs after
+    // this pass; preemptively detouring cluster edges here racks up same-source
+    // crossings inside the cluster's fanout.
+    const nodeParents: { [id: string]: string | undefined } = {};
+    for (const el of Object.values(dia.elements)) {
+        if (el?.type !== ElementType.Cluster) continue;
+        for (const memberId of el.memberNodeIds ?? []) {
+            const member = dia.elements[memberId];
+            if (member?.type !== ElementType.Cluster) nodeParents[memberId] = el.id;
+        }
+    }
+
+    for (const a of assignments) {
+        if (a.srcAlign !== inFlowSrc || a.tgtAlign !== inFlowTgt) continue;
+        if (Math.abs(a.dy) > CROSS_ROW_DY_THRESHOLD_PX) continue;
+        if (nodeParents[a.srcNodeId] || nodeParents[a.tgtNodeId]) continue;
+        const src = newNodes[a.srcNodeId]?.bounds;
+        const tgt = newNodes[a.tgtNodeId]?.bounds;
+        if (!src || !tgt) continue;
+        const xMin = Math.min(src.x + src.width, tgt.x);
+        const xMax = Math.max(src.x + src.width, tgt.x);
+        if (xMax - xMin <= 0) continue;
+        const srcCenterY = src.y + src.height / 2;
+        const tgtCenterY = tgt.y + tgt.height / 2;
+        const yMin = Math.min(srcCenterY, tgtCenterY);
+        const yMax = Math.max(srcCenterY, tgtCenterY);
+        let blocked = false;
+        for (const [id, n] of Object.entries(newNodes)) {
+            if (id === a.srcNodeId || id === a.tgtNodeId) continue;
+            const b = n?.bounds;
+            if (!b) continue;
+            if (b.x + b.width <= xMin || b.x >= xMax) continue;
+            if (b.y + b.height <= yMin || b.y >= yMax) continue;
+            blocked = true;
+            break;
+        }
+        if (!blocked) continue;
+        a.srcAlign = PortAlignment.Bottom;
+        a.tgtAlign = PortAlignment.Top;
     }
 }
 
