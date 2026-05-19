@@ -363,6 +363,23 @@ describe("golden: lr-user-bug-repro", () => {
     });
 });
 
+describe("golden: lr-branched-chain", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-branched-chain"); });
+
+    it("non-clustered branched LR flowchart with 6+ layers keeps nodes in their layers", () => {
+        // Bug: with no clusters, the wrap-into-rows kicked in (uniqueXs > maxCols)
+        // and collapsed every layer's nodes to the same y because the wrap
+        // function set a single y per row, ignoring within-layer offsets.
+        loaded.L.nodes("ChatHistory.aget_messages", "checkpointer.aget v1", "checkpointer.aget v2").noOverlap();
+        loaded.L.nodes("search_agents", "Supervisor / DeepAgent").noOverlap();
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -375,6 +392,7 @@ describe("golden: fixture inventory", () => {
             "lr-fanout-clusters",
             "lr-user-bug-repro",
             "lr-cluster-no-internal-edges",
+            "lr-branched-chain",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);

@@ -1,0 +1,13 @@
+flowchart LR
+    REQ[New user message] --> WHICH{v1 or v2?}
+    WHICH -->|v1| H1[ChatHistory.aget_messages]
+    WHICH -->|v1| C1[checkpointer.aget v1]
+    WHICH -->|v2| CP[checkpointer.aget v2]
+    H1 & C1 --> MERGE1[Reduction history]
+    CP --> MERGE2[Full prior messages]
+    MERGE1 --> RETR[search_agents]
+    MERGE2 --> RETR
+    MERGE1 --> SUP[Supervisor / DeepAgent]
+    MERGE2 --> SUP
+    SUP --> SUM[SummarizationMiddleware]
+    SUM --> LLM[Bedrock]

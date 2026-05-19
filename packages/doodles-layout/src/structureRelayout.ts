@@ -180,15 +180,25 @@ function wrapLongLayoutsIntoRows(
     const baseX = uniqueXs[0]!;
     const baseY = Math.min(...entries.map(([, n]) => n.bounds!.y));
 
-    // Pre-compute the max height for each row so cumulative Y respects the
-    // tallest node in each row (heights vary — decision nodes, multi-line
-    // labels, etc).
-    const rowHeights = new Map<number, number>();
+    // Per-column min-y and total layer span. Branched flowcharts put multiple
+    // nodes in the same ELK layer (= same x); preserving their relative y
+    // offsets keeps the branches visually distinct after wrapping. The row's
+    // height is the tallest *layer*, not the tallest single node.
+    const colMinY = new Map<number, number>();
+    const colMaxBottom = new Map<number, number>();
     for (const [, n] of entries) {
         const b = n.bounds!;
         const colIndex = nearestColIndex(b.x, uniqueXs);
+        const prevMin = colMinY.get(colIndex);
+        colMinY.set(colIndex, prevMin === undefined ? b.y : Math.min(prevMin, b.y));
+        const prevMax = colMaxBottom.get(colIndex);
+        colMaxBottom.set(colIndex, prevMax === undefined ? b.y + b.height : Math.max(prevMax, b.y + b.height));
+    }
+    const rowHeights = new Map<number, number>();
+    for (const [colIndex, minY] of colMinY) {
+        const span = (colMaxBottom.get(colIndex) ?? minY) - minY;
         const row = Math.floor(colIndex / maxCols);
-        rowHeights.set(row, Math.max(rowHeights.get(row) ?? 0, b.height));
+        rowHeights.set(row, Math.max(rowHeights.get(row) ?? 0, span));
     }
     const rowOffsets = new Map<number, number>();
     let cumulative = 0;
@@ -203,8 +213,9 @@ function wrapLongLayoutsIntoRows(
         const colIndex = nearestColIndex(b.x, uniqueXs);
         const row = Math.floor(colIndex / maxCols);
         const col = colIndex % maxCols;
+        const offsetInLayer = b.y - (colMinY.get(colIndex) ?? b.y);
         b.x = baseX + col * colWidth;
-        b.y = baseY + (rowOffsets.get(row) ?? 0);
+        b.y = baseY + (rowOffsets.get(row) ?? 0) + offsetInLayer;
     }
 }
 
