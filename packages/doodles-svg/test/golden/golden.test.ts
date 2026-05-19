@@ -408,15 +408,30 @@ describe("golden: lr-cycle-with-back-edges", () => {
             .doesNotCross("Tool / subagent");
     });
 
-    it("back-edges enter targets perpendicular to the receiving side, not sliding along the top border", () => {
-        // Cross-row back-edge enters via the Left face (perpendicular = horizontal).
+    it("back-edges enter targets perpendicular to the receiving side, not sliding along its border", () => {
+        // Rule: docs/layout-rules/back-edge-gutter-routing.md — back-edges
+        // route through the gutter immediately below their source row, so the
+        // target is entered from above (cross-row down) or below (same row),
+        // never from a face that slides along the row's principal axis.
         loaded.L.edge({fromText: "build_deep_agent", toText: "Supervisor LLM call"})
-            .entersTargetPerpendicularTo(PortAlignment.Left);
-        // Same-row back-edge enters via the Top face (perpendicular = vertical
-        // down through the row gap) so it doesn't share the "down at
-        // tgtOuter.left" channel with the cross-row back-edge.
-        loaded.L.edge({fromText: "Subagent LLM call", toText: "Supervisor LLM call"})
             .entersTargetPerpendicularTo(PortAlignment.Top);
+        loaded.L.edge({fromText: "Subagent LLM call", toText: "Supervisor LLM call"})
+            .entersTargetPerpendicularTo(PortAlignment.Bottom);
+    });
+
+    it("back-edges exit through Bottom (gutter below source), never Top (exterior above the diagram)", () => {
+        // Rule: docs/layout-rules/back-edge-gutter-routing.md
+        // Cross-row visually-back (BUILD at end of row 1 → LLM1 at start of row 2):
+        // exit Bottom of BUILD into the gutter between row 1 and row 2,
+        // enter LLM1 from above (Top).
+        loaded.L.edge({fromText: "build_deep_agent", toText: "Supervisor LLM call"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Top);
+        // Same-row cycle return (LLM2 → LLM1, both in row 2): both faces are
+        // Bottom — the edge dips into the gutter below row 2 and comes back up.
+        loaded.L.edge({fromText: "Subagent LLM call", toText: "Supervisor LLM call"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Bottom);
     });
 
     it("svg snapshot", () => {
@@ -450,6 +465,78 @@ describe("golden: lr-fork-linear-tail", () => {
     });
 });
 
+describe("golden: lr-back-edge-gutter", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-back-edge-gutter"); });
+
+    // Rule: docs/layout-rules/back-edge-gutter-routing.md
+    // Minimal isolated case: a 4-node LR chain with one same-row back-edge
+    // closing the cycle Bill → Caterpillar → Dormouse → Bill. The back-edge
+    // must exit Dormouse's Bottom face and enter Bill's Bottom face — routing
+    // through the gutter below the row, not above it.
+    it("Dormouse → Bill back-edge exits source through Bottom", () => {
+        loaded.L.edge({fromText: "Dormouse", toText: "Bill"})
+            .hasSourceAlignment(PortAlignment.Bottom);
+    });
+
+    it("Dormouse → Bill back-edge enters target through Bottom", () => {
+        loaded.L.edge({fromText: "Dormouse", toText: "Bill"})
+            .hasTargetAlignment(PortAlignment.Bottom);
+    });
+
+    it("forward edges keep their Right→Left in-flow alignments", () => {
+        loaded.L.edge({fromText: "Alice", toText: "Bill"})
+            .hasSourceAlignment(PortAlignment.Right)
+            .hasTargetAlignment(PortAlignment.Left);
+        loaded.L.edge({fromText: "Bill", toText: "Caterpillar"})
+            .hasSourceAlignment(PortAlignment.Right)
+            .hasTargetAlignment(PortAlignment.Left);
+    });
+
+    it("back-edge polyline does not cross intermediate nodes", () => {
+        loaded.L.edge({fromText: "Dormouse", toText: "Bill"})
+            .doesNotCross("Caterpillar");
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
+describe("golden: lr-back-edge-wrap", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-back-edge-wrap"); });
+
+    // Rule: docs/layout-rules/back-edge-gutter-routing.md
+    // 8-node chain wraps to two rows (default maxColsPerRow=5). Exercises both
+    // gutter cases the rule covers:
+    //  - Eaglet → Fawn: forward edge in DAG, visually-back after row wrap
+    //    (target below source). Gutter between row 1 and row 2.
+    //  - Hatter → Fawn: true back-edge, same row 2. Gutter below row 2.
+    it("Eaglet → Fawn row-wrap forward edge exits Bottom, enters Top", () => {
+        loaded.L.edge({fromText: "Eaglet", toText: "Fawn"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Top);
+    });
+
+    it("Hatter → Fawn same-row back-edge exits Bottom, enters Bottom", () => {
+        loaded.L.edge({fromText: "Hatter", toText: "Fawn"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Bottom);
+    });
+
+    it("back-edges enter targets perpendicularly", () => {
+        loaded.L.edge({fromText: "Eaglet", toText: "Fawn"})
+            .entersTargetPerpendicularTo(PortAlignment.Top);
+        loaded.L.edge({fromText: "Hatter", toText: "Fawn"})
+            .entersTargetPerpendicularTo(PortAlignment.Bottom);
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -465,6 +552,8 @@ describe("golden: fixture inventory", () => {
             "lr-branched-chain",
             "lr-cycle-with-back-edges",
             "lr-fork-linear-tail",
+            "lr-back-edge-gutter",
+            "lr-back-edge-wrap",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);

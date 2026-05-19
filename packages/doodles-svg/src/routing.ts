@@ -368,8 +368,16 @@ function sameFaceDetour(
         const sideX = pickDetourSide(from.x, to.x, leftX, rightX);
         return [from, {x: from.x, y: outerY}, {x: sideX, y: outerY}, {x: sideX, y: to.y}, to];
     }
-    // Bottom
+    // Bottom — mirror of Top: prefer a clean 3-segment U when source and
+    // target are horizontally separated (the canonical LR back-edge case
+    // under the gutter-routing rule). The "up" segment lives in the gap
+    // between the two columns and enters target's bottom perpendicularly.
     const outerY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
+    const horizontalGap = Math.abs(from.x - to.x) > (srcBounds.width + tgtBounds.width) / 2;
+    if (horizontalGap) {
+        return [from, {x: from.x, y: outerY}, {x: to.x, y: outerY}, to];
+    }
+    // Vertically-stacked fallback: 5-segment side detour to clear both bboxes.
     const leftX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
     const rightX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
     const sideX = pickDetourSide(from.x, to.x, leftX, rightX);

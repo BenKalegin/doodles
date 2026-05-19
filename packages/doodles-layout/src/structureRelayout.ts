@@ -377,24 +377,18 @@ function adjustPortAlignments(
                 : PortAlignment.Left;
         } else {
             const forward = reversed ? dx <= 0 : dx >= 0;
-            // Forward edges keep the natural in-flow face (Right→Left for LR,
-            // Left→Right for RL). Back-edges exit on Top (away from the
-            // principal axis so the route clears every node in source's row).
-            // The target-face choice depends on whether source and target are
-            // in the same row:
-            //   - same-row → Top: 3-segment U over the row that enters target
-            //     perpendicular to its top through the row gap.
-            //   - cross-row → Left: cross-axis detour that enters perpendicular
-            //     to target's left side. Different from same-row so multiple
-            //     back-edges to one target don't all collapse onto the same
-            //     "down at tgtOuter.left" channel and visually overlap.
-            const sameRow = Math.abs(dy) <= CROSS_ROW_DY_THRESHOLD_PX;
-            srcAlign = forward
-                ? (reversed ? PortAlignment.Left : PortAlignment.Right)
-                : PortAlignment.Top;
-            tgtAlign = forward
-                ? (reversed ? PortAlignment.Right : PortAlignment.Left)
-                : (sameRow ? PortAlignment.Top : PortAlignment.Left);
+            if (forward) {
+                // Forward edges keep the natural in-flow face.
+                srcAlign = reversed ? PortAlignment.Left : PortAlignment.Right;
+                tgtAlign = reversed ? PortAlignment.Right : PortAlignment.Left;
+            } else {
+                // Back-edges (and visually-back forward edges from LR row
+                // wrapping) route through the gutter below the source row,
+                // not above it. See docs/layout-rules/back-edge-gutter-routing.md.
+                const faces = lrBackEdgeFaces(dy);
+                srcAlign = faces.src;
+                tgtAlign = faces.tgt;
+            }
         }
         assignments.push({
             port1: el.port1, port2: el.port2,
@@ -422,6 +416,31 @@ function adjustPortAlignments(
 // the perpendicular axis so the edge exits toward the target row instead of
 // looping the long way around the diagram.
 const CROSS_ROW_DY_THRESHOLD_PX = 40;
+
+/**
+ * Port faces for an LR back-edge or visually-back row-wrapped forward edge,
+ * given the dy (target.y - source.y) between source and target.
+ *
+ * Same-row (|dy| ≤ threshold): both faces are Bottom. The edge dips into the
+ *   gutter below the row and returns up to the target.
+ * Target below source (dy > threshold): src Bottom, tgt Top. The edge uses
+ *   the gutter between the two rows — exits source downward, enters target
+ *   from above.
+ * Target above source (dy < -threshold): src Top, tgt Bottom. Rare in practice
+ *   (only happens for back-edges that cross multiple rows upward); the route
+ *   uses the gutter between the rows from the other direction.
+ *
+ * See docs/layout-rules/back-edge-gutter-routing.md for the rationale.
+ */
+function lrBackEdgeFaces(dy: number): {src: PortAlignment; tgt: PortAlignment} {
+    if (Math.abs(dy) <= CROSS_ROW_DY_THRESHOLD_PX) {
+        return {src: PortAlignment.Bottom, tgt: PortAlignment.Bottom};
+    }
+    if (dy > 0) {
+        return {src: PortAlignment.Bottom, tgt: PortAlignment.Top};
+    }
+    return {src: PortAlignment.Top, tgt: PortAlignment.Bottom};
+}
 
 function applyDecisionNodeConvention(
     dia: Diagram & DiagramInternal,

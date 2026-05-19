@@ -14,7 +14,7 @@ Skim this index, click into the rule that matches what you're seeing. Each rule 
 - [linear-tail-after-fork](./linear-tail-after-fork.md) — A linear chain hanging off a fork sits on one shared row, not a staircase.
 
 ### Edge routing
-- [back-edge-gutter-routing](./back-edge-gutter-routing.md) *(planned)* — Back-edges route through the gutter below their source row, depth-stacked by target rank. Never above row 1.
+- [back-edge-gutter-routing](./back-edge-gutter-routing.md) — Back-edges route through the gutter below their source row. Same-row dips below the row; cross-row uses the gutter between the rows. Never through exterior space above row 1.
 
 ## Conventions
 

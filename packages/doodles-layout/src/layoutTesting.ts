@@ -188,6 +188,13 @@ export interface EdgeAssert {
      *  side rather than running along it. Catches back-edge detours that
      *  enter the target by sliding along its top/bottom border. */
     entersTargetPerpendicularTo(side: PortAlignment): EdgeAssert;
+    /** Asserts the source port alignment (which face of the source the edge
+     *  exits through). Stronger than `entersTargetPerpendicularTo` for
+     *  back-edge rules — perpendicular doesn't differentiate Top from Bottom. */
+    hasSourceAlignment(side: PortAlignment): EdgeAssert;
+    /** Asserts the target port alignment (which face of the target the edge
+     *  enters through). */
+    hasTargetAlignment(side: PortAlignment): EdgeAssert;
 }
 
 export interface EdgesAssert {
@@ -582,6 +589,26 @@ export function layoutFor(result: LaidOutDiagram, options: LayoutForOptions = {}
                     const polyStr = route.polyline.map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(" → ");
                     throw new Error(
                         `Edge "${q.fromText}" → "${q.toText}" crosses non-endpoint nodes: ${offenders.join(", ")}\n  polyline: ${polyStr}`
+                    );
+                }
+                return api;
+            },
+            hasSourceAlignment(side) {
+                const actual = (diagram.ports ?? {})[link.port1]?.alignment;
+                if (actual !== side) {
+                    throw new Error(
+                        `Edge "${q.fromText}" → "${q.toText}" source-port alignment is ` +
+                        `${actual === undefined ? "unset" : PortAlignment[actual]}, expected ${PortAlignment[side]}`
+                    );
+                }
+                return api;
+            },
+            hasTargetAlignment(side) {
+                const actual = (diagram.ports ?? {})[link.port2]?.alignment;
+                if (actual !== side) {
+                    throw new Error(
+                        `Edge "${q.fromText}" → "${q.toText}" target-port alignment is ` +
+                        `${actual === undefined ? "unset" : PortAlignment[actual]}, expected ${PortAlignment[side]}`
                     );
                 }
                 return api;

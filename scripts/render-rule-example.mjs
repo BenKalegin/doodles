@@ -55,6 +55,23 @@ if (svgText.startsWith('"') && svgText.endsWith('"')) {
 // Unescape the JS string literal: \" → ", \\ → \, \n → newline.
 svgText = svgText.replace(/\\(["\\/])/g, "$1").replace(/\\n/g, "\n");
 
+// Inject a self-contained <style> block so the SVG looks legible against any
+// background when viewed standalone (markdown viewers, browsers, GitHub
+// preview). doodles-svg' default theme emits `currentColor` + 0.06 fill
+// opacity, designed for a host that owns the palette via outer CSS. In
+// standalone rendering the host doesn't provide that, so the rectangles
+// vanish against dark backgrounds and look anemic on light ones. The style
+// inside the SVG sets an explicit color for both color schemes and bumps the
+// fill opacity. When the SVG is inlined into a host that styles SVG elements,
+// the host's cascade wins as long as it sets `color` with at least the same
+// specificity — so this is purely additive for standalone use.
+const STYLE_BLOCK = `<style>
+  svg { color: #2c3e50; }
+  @media (prefers-color-scheme: dark) { svg { color: #e6eaef; } }
+  rect[fill-opacity="0.06"], rect[fill-opacity="0.04"] { fill-opacity: 0.14; }
+</style>`;
+svgText = svgText.replace(/<svg([^>]*)>/, `<svg$1>${STYLE_BLOCK}`);
+
 mkdirSync(OUTPUT_DIR, {recursive: true});
 const outPath = join(OUTPUT_DIR, `${fixture}.svg`);
 writeFileSync(outPath, svgText, "utf8");
