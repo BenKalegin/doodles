@@ -375,6 +375,15 @@ describe("golden: lr-branched-chain", () => {
         loaded.L.nodes("search_agents", "Supervisor / DeepAgent").noOverlap();
     });
 
+    it("multi-source edge with inline shape `A & B --> C[label]` creates the predecessor edges", () => {
+        // The mermaid line `H1 & C1 --> MERGE1[Reduction history of chat]`
+        // used to be dropped on the floor because the multi-arrow path
+        // filtered out segments containing brackets, leaving MERGE1 with no
+        // predecessors and ending up at layer 0 instead of layer 3.
+        loaded.L.node("Reduction history of chat").rightOf("ChatHistory.aget_messages");
+        loaded.L.node("Reduction history of chat").rightOf("checkpointer.aget v1");
+    });
+
     it("svg snapshot", () => {
         expect(loaded.svg).toMatchSnapshot();
     });

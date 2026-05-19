@@ -70,7 +70,7 @@ export function renderSvg(diagram: RenderableDoodle, options: RenderOptions = {}
 
 // ── Cluster ──────────────────────────────────────────────────────────────────
 
-const CLUSTER_LABEL_HEIGHT = 22;
+const CLUSTER_LABEL_HEIGHT = 28;
 const CLUSTER_RX = 6;
 
 // Subtle fill opacities for neutral (currentColor) fills. The exact values
@@ -123,7 +123,7 @@ function renderCluster(b: Bounds, label: string, theme: ThemeTokens): string {
         ? `<path d="${topRoundedRectPath(b.x, b.y, b.width, CLUSTER_LABEL_HEIGHT, CLUSTER_RX)}" fill="currentColor" fill-opacity="${NEUTRAL_CLUSTER_HEADER_OPACITY}" />`
         : "";
     const labelText = label
-        ? `<text x="${b.x + b.width / 2}" y="${b.y + CLUSTER_LABEL_HEIGHT / 2 + 4}" text-anchor="middle" dominant-baseline="central" font-family="${xmlEscape(theme.font.family)}" font-size="${theme.font.size}" font-weight="bold" fill="${theme.colors.compoundLabel}">${xmlEscape(label)}</text>`
+        ? `<text x="${b.x + b.width / 2}" y="${b.y + CLUSTER_LABEL_HEIGHT / 2}" text-anchor="middle" dominant-baseline="central" font-family="${xmlEscape(theme.font.family)}" font-size="${theme.font.size}" font-weight="bold" fill="${theme.colors.compoundLabel}">${xmlEscape(label)}</text>`
         : "";
     return rect + header + labelText;
 }

@@ -5,7 +5,7 @@ import type {ClusterDef, LayoutHints, LayoutLink, LayoutNode, LayoutNodeBounds, 
 const DEFAULT_RANK_SEP = 80;
 const DEFAULT_NODE_SEP = 60;
 const CLUSTER_PADDING = 20;
-const CLUSTER_LABEL_HEIGHT = 22; // matches ClusterContainer LABEL_HEIGHT
+const CLUSTER_LABEL_HEIGHT = 28; // matches ClusterContainer LABEL_HEIGHT
 // Cross-compound edges are routed at the root layer and hug cluster borders
 // at zero clearance unless this minimum is set explicitly.
 const CLUSTER_EDGE_NODE_SPACING = 20;

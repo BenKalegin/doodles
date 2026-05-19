@@ -181,11 +181,37 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
         return arrowCount >= 2;
     }
 
+    // Per-part inline shape patterns mirror what `flowMatch` (the single-arrow
+     // path) accepts for an endpoint. Each match group is the label text inside
+     // the corresponding mermaid shape syntax.
+    const INLINE_SHAPE_RE =
+        /^([\w-]+)\s*(?:\[\/([^\]]+)\/\]|\[\(("[^"]+"|.+?)\)\]|\[([^\]]+)\]|\(\[([^\]]+)\]\)|\(\(([^)]+)\)\)|\(([^)]+)\)|\{([^}]+)\})?$/;
+
     function splitChainSide(side: string): string[] {
-        return side
-            .split(/\s*&\s*/)
-            .map(part => part.trim())
-            .filter(part => /^[\w-]+$/.test(part));
+        // Each `&`-separated segment can include an inline shape declaration
+        // (e.g. `MERGE1[Reduction history]`). Without parsing it, the segment
+        // gets dropped and the line silently loses its edges.
+        const ids: string[] = [];
+        for (const raw of side.split(/\s*&\s*/)) {
+            const trimmed = raw.trim();
+            if (!trimmed) continue;
+            const match = trimmed.match(INLINE_SHAPE_RE);
+            if (!match) continue;
+            const id = match[1]!;
+            const rawLabel = match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6] ?? match[7] ?? match[8];
+            if (rawLabel !== undefined) {
+                const label = normalizeLabel(stripLabelQuotes(rawLabel));
+                const shape: "process" | "decision" | "terminator" | "input-output" =
+                    match[8] ? "decision"
+                    : match[2] ? "input-output"
+                    : (match[5] || match[6] || match[7] || match[3]) ? "terminator"
+                    : "process";
+                getOrCreateNode(id, label, toFlowchartKind(shape));
+                trackSubgraphMembership(id);
+            }
+            ids.push(id);
+        }
+        return ids;
     }
 
     // Diamond shapes inscribe text in their inner rhombus (half-width × half-
