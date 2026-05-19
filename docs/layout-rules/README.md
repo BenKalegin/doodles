@@ -12,6 +12,7 @@ Skim this index, click into the rule that matches what you're seeing. Each rule 
 
 ### Row & column placement
 - [linear-tail-after-fork](./linear-tail-after-fork.md) — A linear chain hanging off a fork sits on one shared row, not a staircase.
+- [row-center-align-by-height](./row-center-align-by-height.md) — Nodes in the same row are aligned by their vertical centers, not their tops. Multi-line labels next to single-line ones no longer kink the connecting edges.
 
 ### Edge routing
 - [back-edge-gutter-routing](./back-edge-gutter-routing.md) — Back-edges route through the gutter below their source row. Same-row dips below the row; cross-row uses the gutter between the rows. Never through exterior space above row 1.

@@ -99,6 +99,7 @@ export async function relayoutStructure<T extends Diagram>(
     ]);
     wrapLongLayoutsIntoRows(newNodes, resolvedHints, excludeFromWrapping);
     alignChainsToForkRow(newNodes, edges, resolvedHints, nodeParents);
+    centerAlignRowsByHeight(newNodes, resolvedHints, excludeFromWrapping);
 
     const realignedPorts = adjustPortAlignments(dia, newNodes, resolvedHints);
     const newPorts = distributePortsAlongSides(dia, realignedPorts, newNodes);
@@ -305,6 +306,72 @@ function pinChainToY(
         const next = out[0]!;
         if ((inDeg.get(next) ?? 0) !== 1) break;
         cur = next;
+    }
+}
+
+// Tolerance for grouping nodes into the same visual row by their top-y.
+// Filigree and the wrap pass pin row members to exact y values, so a tight
+// tolerance is enough — only soaks up sub-pixel numeric drift.
+const ROW_GROUP_TOLERANCE_PX = 5;
+
+/**
+ * Center-align nodes within each visual row by their final centers, so edges
+ * between different-height neighbors run straight.
+ *
+ * Problem (see docs/layout-rules/row-center-align-by-height.md): filigree's
+ * Brandes-Köpf placer top-aligns nodes within a layer by default. When a row
+ * contains nodes of different heights (multi-line labels next to single-line
+ * ones), tops are aligned but centers aren't — a Right→Left edge between a
+ * 60 px tall node and a 90 px tall node lands at center y = 30 on one side
+ * and y = 45 on the other. The router renders that as a 4-segment polyline
+ * with a 15 px vertical jog mid-edge.
+ *
+ * Fix (option 2 in the comparison — Graphviz's approach): once row membership
+ * is settled (after wrap + linear-tail pinning), find each row's tallest node
+ * and shift every member so its center matches `top + maxHeight / 2`. Tall
+ * nodes stay put; short nodes get pushed down by half the height delta. Ports
+ * at the default 50% ratio now sit at a shared centerline.
+ *
+ * No-ops on TB/BT layouts (edges flow vertically there; horizontal alignment
+ * is the row-center concern). No-ops on rows of uniform height.
+ */
+function centerAlignRowsByHeight(
+    nodes: DiagramInternal["nodes"],
+    hints: LayoutHints,
+    excludeIds: ReadonlySet<string>,
+): void {
+    const horizontal = hints.direction === LayoutDirection.LeftToRight
+        || hints.direction === LayoutDirection.RightToLeft;
+    if (!horizontal) return;
+
+    const entries = Object.entries(nodes).filter(([id, n]) => n?.bounds && !excludeIds.has(id));
+    if (entries.length < 2) return;
+
+    const sorted = entries.slice().sort((a, b) => a[1].bounds!.y - b[1].bounds!.y);
+    interface RowGroup { topY: number; entries: typeof sorted; }
+    const rows: RowGroup[] = [];
+    for (const entry of sorted) {
+        const y = entry[1].bounds!.y;
+        const existing = rows.find(r => Math.abs(r.topY - y) <= ROW_GROUP_TOLERANCE_PX);
+        if (existing) existing.entries.push(entry);
+        else rows.push({topY: y, entries: [entry]});
+    }
+
+    for (const row of rows) {
+        if (row.entries.length < 2) continue;
+        let maxHeight = row.entries[0]![1].bounds!.height;
+        let minHeight = maxHeight;
+        for (const [, n] of row.entries) {
+            const h = n.bounds!.height;
+            if (h > maxHeight) maxHeight = h;
+            if (h < minHeight) minHeight = h;
+        }
+        if (maxHeight === minHeight) continue;
+        const rowCenterY = row.topY + maxHeight / 2;
+        for (const [, n] of row.entries) {
+            const b = n.bounds!;
+            b.y = rowCenterY - b.height / 2;
+        }
     }
 }
 

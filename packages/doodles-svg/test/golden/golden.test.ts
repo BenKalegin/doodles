@@ -583,6 +583,40 @@ describe("golden: lr-fork-cross-row", () => {
     });
 });
 
+describe("golden: lr-row-mixed-heights", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-row-mixed-heights"); });
+
+    // Rule: docs/layout-rules/row-center-align-by-height.md
+    // Hatter and Caterpillar are multi-line (height ~70 px); Alice, Cheshire,
+    // and Mouse are single-line (height 60 px). Filigree top-aligns them by
+    // default, so their centers differ by ~5 px and Right→Left edges kink.
+    // After centerAlignRowsByHeight runs, all five centers sit on a shared
+    // centerline and the chain renders as one straight horizontal.
+    it("all row members share a centerline within 1 px", () => {
+        loaded.L.nodes("Alice", "Hatter", "Cheshire", "Caterpillar", "Mouse").sameRow(1);
+    });
+
+    it("source and target port y match for adjacent edges (straight horizontal)", () => {
+        // sourcePortY is the y of the polyline's first point — the source
+        // port attach. For a Right→Left edge between same-row nodes the
+        // last polyline point sits at the target's left port y. Both should
+        // equal the shared centerline.
+        const alice2hatter = loaded.L.edge({fromText: "Alice", toText: "Hatter"}).sourcePortY();
+        const hatter2cheshire = loaded.L.edge({fromText: "Hatter", toText: "Cheshire"}).sourcePortY();
+        const cheshire2caterpillar = loaded.L.edge({fromText: "Cheshire", toText: "Caterpillar"}).sourcePortY();
+        const caterpillar2mouse = loaded.L.edge({fromText: "Caterpillar", toText: "Mouse"}).sourcePortY();
+        // All four source ports are at the same centerline (within rounding).
+        expect(Math.abs(hatter2cheshire - alice2hatter)).toBeLessThan(1);
+        expect(Math.abs(cheshire2caterpillar - alice2hatter)).toBeLessThan(1);
+        expect(Math.abs(caterpillar2mouse - alice2hatter)).toBeLessThan(1);
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -601,6 +635,7 @@ describe("golden: fixture inventory", () => {
             "lr-back-edge-gutter",
             "lr-back-edge-wrap",
             "lr-fork-cross-row",
+            "lr-row-mixed-heights",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);
