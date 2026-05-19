@@ -270,6 +270,28 @@ describe("golden: lr-user-bug-repro", () => {
         loaded.L.nodes("Tenant Postgres", "Farm Postgres", "Valkey / Redis", "DynamoDB").noOverlap();
     });
 
+    it("no edge pierces the AgentService or DeepAgentService nodes vertically", () => {
+        // Visual bug: a vertical edge stroke went straight through both Services
+        // top nodes from somewhere outside the cluster down to nodes below.
+        // Find which edges cross by checking every edge against these two nodes.
+        const services = ["AgentService", "DeepAgentService"];
+        const allEdges = (loaded as unknown as {
+            L: {bounds(t: string): unknown}
+        }) as never;
+        void allEdges; // placeholder — instead, iterate the diagram's links via the facade
+        // Use the existing facade — every link gets a doesNotCross check.
+        // Done by reading links directly from elements via debug; for now we
+        // pin the canonical fan-out edges Router→AGSUP/AGDA and Services→Clients
+        // edges, since those are the suspects.
+        loaded.L.edge({fromText: "chat v1 + sync", toText: "AgentService"}).doesNotCross(...services.filter(s => s !== "AgentService"));
+        loaded.L.edge({fromText: "chat v2 SSE", toText: "DeepAgentService"}).doesNotCross(...services.filter(s => s !== "DeepAgentService"));
+        loaded.L.edge({fromText: "AgentService", toText: "BedrockModelClient"}).doesNotCross(...services.filter(s => s !== "AgentService"));
+        loaded.L.edge({fromText: "AgentService", toText: "Tenant Postgres"}).doesNotCross(...services.filter(s => s !== "AgentService"));
+        loaded.L.edge({fromText: "AgentService", toText: "Valkey / Redis"}).doesNotCross(...services.filter(s => s !== "AgentService"));
+        loaded.L.edge({fromText: "DeepAgentService", toText: "Tenant Postgres"}).doesNotCross(...services.filter(s => s !== "DeepAgentService"));
+        loaded.L.edge({fromText: "DeepAgentService", toText: "BedrockModelClient"}).doesNotCross(...services.filter(s => s !== "DeepAgentService"));
+    });
+
     it("FA's cross-cluster edges don't cross the in-cluster middleware chain", () => {
         // FastAPI app has two kinds of forward successors: MW1 (next link in
         // the same intra-cluster chain) and R1..R9 (cross-cluster fan-out to

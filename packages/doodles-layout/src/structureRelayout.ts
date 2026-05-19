@@ -289,7 +289,7 @@ function adjustPortAlignments(
     }
 
     applyDecisionNodeConvention(dia, assignments, hints);
-    applyCrossClusterExitFace(dia, assignments, hints);
+    applyCrossClusterExitFace(dia, newNodes, assignments, hints);
 
     const ports: DiagramInternal["ports"] = {...dia.ports};
     for (const a of assignments) {
@@ -369,9 +369,16 @@ function decisionOutputFace(
  * face, and the cross-cluster polylines re-enter the in-cluster siblings on the
  * way to their actual target. Switching the cross-cluster edges to the
  * perpendicular face gives them a clear path around the source's cluster.
+ *
+ * The preferred perpendicular face is chosen by target direction, but if a
+ * cluster sibling shadows that face (would be crossed by an exit-then-traverse
+ * polyline) we switch to the opposite perpendicular face. If both perpendicular
+ * faces are shadowed, leave the assignment alone — better to render an ugly
+ * forward-direction edge than to draw a useless detour through siblings.
  */
 function applyCrossClusterExitFace(
     dia: Diagram & DiagramInternal,
+    newNodes: DiagramInternal["nodes"],
     assignments: LinkAssignment[],
     hints: LayoutHints,
 ): void {
@@ -384,11 +391,14 @@ function applyCrossClusterExitFace(
         : (reversed ? PortAlignment.Left : PortAlignment.Right);
 
     const nodeParents: { [id: string]: string } = {};
+    const clusterMembers: { [clusterId: string]: string[] } = {};
     for (const el of Object.values(dia.elements)) {
         if (el?.type !== ElementType.Cluster) continue;
         for (const memberId of el.memberNodeIds ?? []) {
             const member = dia.elements[memberId];
-            if (member?.type !== ElementType.Cluster) nodeParents[memberId] = el.id;
+            if (member?.type === ElementType.Cluster) continue;
+            nodeParents[memberId] = el.id;
+            (clusterMembers[el.id] ??= []).push(memberId);
         }
     }
 
@@ -404,10 +414,26 @@ function applyCrossClusterExitFace(
             nodeParents[a.tgtNodeId] === srcCluster && a.srcAlign === mainOutputSide
         );
         if (!hasIntraClusterOnMainFace) continue;
+
+        const srcBounds = newNodes[srcId]?.bounds;
+        if (!srcBounds) continue;
+        const siblings = (clusterMembers[srcCluster] ?? [])
+            .filter(id => id !== srcId)
+            .map(id => newNodes[id]?.bounds)
+            .filter((b): b is NonNullable<typeof b> => b !== undefined);
+        const blockedFaces = computeBlockedFaces(srcBounds, siblings);
+
         for (const a of outgoing) {
             if (nodeParents[a.tgtNodeId] === srcCluster) continue;
             if (a.srcAlign !== mainOutputSide) continue;
-            a.srcAlign = perpendicularExitFace(a, vertical);
+            const preferred = perpendicularExitFace(a, vertical);
+            const opposite = oppositeFace(preferred);
+            if (!blockedFaces.has(preferred)) {
+                a.srcAlign = preferred;
+            } else if (!blockedFaces.has(opposite)) {
+                a.srcAlign = opposite;
+            }
+            // else: both perpendicular faces blocked — keep main face.
         }
     }
 }
@@ -417,6 +443,43 @@ function perpendicularExitFace(a: LinkAssignment, vertical: boolean): PortAlignm
         return a.dx >= 0 ? PortAlignment.Right : PortAlignment.Left;
     }
     return a.dy >= 0 ? PortAlignment.Bottom : PortAlignment.Top;
+}
+
+function oppositeFace(face: PortAlignment): PortAlignment {
+    switch (face) {
+        case PortAlignment.Top: return PortAlignment.Bottom;
+        case PortAlignment.Bottom: return PortAlignment.Top;
+        case PortAlignment.Left: return PortAlignment.Right;
+        case PortAlignment.Right: return PortAlignment.Left;
+    }
+}
+
+/**
+ * A face is "blocked" by a sibling when the sibling sits in the strip the
+ * exit segment would traverse leaving the source through that face. For
+ * Bottom: a sibling whose y-range starts below source.bottom and whose
+ * x-range overlaps source.x-range. The other three faces are mirrored.
+ */
+function computeBlockedFaces(
+    src: { x: number; y: number; width: number; height: number },
+    siblings: readonly { x: number; y: number; width: number; height: number }[],
+): Set<PortAlignment> {
+    const blocked = new Set<PortAlignment>();
+    const srcLeft = src.x;
+    const srcRight = src.x + src.width;
+    const srcTop = src.y;
+    const srcBottom = src.y + src.height;
+    const xOverlaps = (b: typeof src): boolean =>
+        b.x < srcRight && b.x + b.width > srcLeft;
+    const yOverlaps = (b: typeof src): boolean =>
+        b.y < srcBottom && b.y + b.height > srcTop;
+    for (const b of siblings) {
+        if (xOverlaps(b) && b.y >= srcBottom) blocked.add(PortAlignment.Bottom);
+        if (xOverlaps(b) && b.y + b.height <= srcTop) blocked.add(PortAlignment.Top);
+        if (yOverlaps(b) && b.x >= srcRight) blocked.add(PortAlignment.Right);
+        if (yOverlaps(b) && b.x + b.width <= srcLeft) blocked.add(PortAlignment.Left);
+    }
+    return blocked;
 }
 
 function distributePortsAlongSides(
