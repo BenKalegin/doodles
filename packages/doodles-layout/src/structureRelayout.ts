@@ -482,6 +482,30 @@ function computeBlockedFaces(
     return blocked;
 }
 
+// Pad mirrors `SAME_FACE_DETOUR_PAD` in doodles-svg' routing — it's the same
+// container-clearance offset used by the router when picking the elbow pivot
+// past a cluster's outer edge. Kept in sync so the port sort assigns ports in
+// the same order the router will actually place their pivots.
+const CONTAINER_CLEARANCE_PAD_PX = 20;
+
+interface PortSortInfo {
+    portId: string;
+    /** sign(dy) for vertical faces, sign(dx) for horizontal — groups edges by
+     *  which side of the source they go to (up vs down, or left vs right). */
+    directionGroup: number;
+    /** Estimated x of the route's vertical pivot (Right/Left face). Closer to
+     *  source = smaller. Used only for vertical faces; horizontal faces sort
+     *  by angle instead since the elbow-pivot heuristic doesn't differentiate
+     *  cross-cluster fan-outs to a same-x target column. */
+    pivotDistance: number;
+    /** atan2(dy, dx) — used as the sort key for horizontal faces. Each face
+     *  traversal corresponds to a monotonic sweep of atan2 values. */
+    angle: number;
+    /** Target's center coord along the face axis — final tiebreaker inside a
+     *  (directionGroup, pivotDistance) bucket on vertical faces. */
+    targetPerpCoord: number;
+}
+
 function distributePortsAlongSides(
     diagram: Diagram & DiagramInternal,
     ports: DiagramInternal["ports"],
@@ -498,6 +522,15 @@ function distributePortsAlongSides(
         }
     }
 
+    const nodeParents: { [id: string]: string } = {};
+    for (const el of Object.values(diagram.elements)) {
+        if (el?.type !== ElementType.Cluster) continue;
+        for (const memberId of el.memberNodeIds ?? []) {
+            const member = diagram.elements[memberId];
+            if (member?.type !== ElementType.Cluster) nodeParents[memberId] = el.id;
+        }
+    }
+
     const groups: { [key: string]: string[] } = {};
     for (const el of Object.values(diagram.elements)) {
         if (el?.type !== ElementType.ClassPort) continue;
@@ -510,23 +543,105 @@ function distributePortsAlongSides(
     const result = {...ports};
     for (const [key, portIds] of Object.entries(groups)) {
         if (portIds.length <= 1) continue;
-        const alignment = Number(key.split("|")[1]) as PortAlignment;
-        const horizontal = alignment === PortAlignment.Top || alignment === PortAlignment.Bottom;
-        portIds.sort((a, b) => {
-            const oa = otherEndpointOf[a];
-            const ob = otherEndpointOf[b];
-            const ba = oa ? nodes[oa]?.bounds : undefined;
-            const bb = ob ? nodes[ob]?.bounds : undefined;
-            if (!ba || !bb) return 0;
-            return horizontal
-                ? (ba.x + ba.width / 2) - (bb.x + bb.width / 2)
-                : (ba.y + ba.height / 2) - (bb.y + bb.height / 2);
-        });
-        const n = portIds.length;
+        const [sourceId, alignmentStr] = key.split("|");
+        const alignment = Number(alignmentStr!) as PortAlignment;
+        const srcBounds = nodes[sourceId!]?.bounds;
+        if (!srcBounds) continue;
+        const sortInfos = portIds.map(pid => buildPortSortInfo(
+            pid, alignment, sourceId!, srcBounds, otherEndpointOf, nodes, nodeParents
+        ));
+        sortInfos.sort(compareForFace(alignment));
+        const n = sortInfos.length;
         for (let i = 0; i < n; i++) {
             const ratio = ((i + 1) / (n + 1)) * 100;
-            result[portIds[i]!] = {...result[portIds[i]!], edgePosRatio: ratio};
+            const pid = sortInfos[i]!.portId;
+            result[pid] = {...result[pid], edgePosRatio: ratio};
         }
     }
     return result;
+}
+
+function buildPortSortInfo(
+    portId: string,
+    alignment: PortAlignment,
+    sourceId: string,
+    srcBounds: { x: number; y: number; width: number; height: number },
+    otherEndpointOf: { [portId: string]: string },
+    nodes: DiagramInternal["nodes"],
+    nodeParents: { [id: string]: string },
+): PortSortInfo {
+    const tgtId = otherEndpointOf[portId];
+    const tgtBounds = tgtId ? nodes[tgtId]?.bounds : undefined;
+    if (!tgtId || !tgtBounds) {
+        return {portId, directionGroup: 0, pivotDistance: 0, angle: 0, targetPerpCoord: 0};
+    }
+    const srcCenterX = srcBounds.x + srcBounds.width / 2;
+    const srcCenterY = srcBounds.y + srcBounds.height / 2;
+    const tgtCenterX = tgtBounds.x + tgtBounds.width / 2;
+    const tgtCenterY = tgtBounds.y + tgtBounds.height / 2;
+    const sameContainer = nodeParents[sourceId] !== undefined
+        && nodeParents[sourceId] === nodeParents[tgtId];
+    const srcContainerBounds = nodeParents[sourceId] !== undefined
+        ? nodes[nodeParents[sourceId]!]?.bounds
+        : undefined;
+    const vertical = alignment === PortAlignment.Right || alignment === PortAlignment.Left;
+    const directionGroup = vertical
+        ? Math.sign(tgtCenterY - srcCenterY)
+        : Math.sign(tgtCenterX - srcCenterX);
+    const pivotDistance = vertical
+        ? estimatePivotX(alignment, sameContainer, srcBounds, tgtBounds, srcContainerBounds)
+        : 0;
+    const angle = Math.atan2(tgtCenterY - srcCenterY, tgtCenterX - srcCenterX);
+    const targetPerpCoord = vertical ? tgtCenterY : tgtCenterX;
+    return {portId, directionGroup, pivotDistance, angle, targetPerpCoord};
+}
+
+function estimatePivotX(
+    alignment: PortAlignment,
+    sameContainer: boolean,
+    srcBounds: { x: number; y: number; width: number; height: number },
+    tgtBounds: { x: number; y: number; width: number; height: number },
+    srcContainerBounds: { x: number; y: number; width: number; height: number } | undefined,
+): number {
+    if (sameContainer || !srcContainerBounds) {
+        return ((srcBounds.x + srcBounds.width / 2) + (tgtBounds.x + tgtBounds.width / 2)) / 2;
+    }
+    return alignment === PortAlignment.Right
+        ? srcContainerBounds.x + srcContainerBounds.width + CONTAINER_CLEARANCE_PAD_PX
+        : srcContainerBounds.x - CONTAINER_CLEARANCE_PAD_PX;
+}
+
+
+
+/**
+ * Compare-fn for port ordering on a given face.
+ *
+ * Vertical faces (Right/Left): primary = directionGroup (UP edges first for
+ * top-to-bottom traversal), secondary = pivotDistance ASC (close-target edges
+ * at the outer ports of each direction group so their short verticals don't
+ * sit inside another edge's long horizontal extend), tertiary = target.y ASC.
+ *
+ * Horizontal faces (Top/Bottom): sort by atan2 of (target − source). Going
+ * left-to-right on a Bottom face is counterclockwise around the source —
+ * atan2 *decreases* in that direction — so Bottom sorts DESC. Top is the
+ * mirror (clockwise) and sorts ASC. This handles the FA → R1..R9 case where
+ * a target column has identical x: the angle differs by target.y and gives
+ * a deterministic crossing-free order without the declaration-order fallback.
+ */
+function compareForFace(alignment: PortAlignment): (a: PortSortInfo, b: PortSortInfo) => number {
+    if (alignment === PortAlignment.Right || alignment === PortAlignment.Left) {
+        // Top of face is small port_y. UP-going edges go above DOWN-going.
+        // For Left we reverse the pivot direction so closer-to-source means
+        // smaller |container.left - midX|.
+        const pivotSign = alignment === PortAlignment.Right ? 1 : -1;
+        return (a, b) => {
+            if (a.directionGroup !== b.directionGroup) return a.directionGroup - b.directionGroup;
+            const pivotDiff = pivotSign * (a.pivotDistance - b.pivotDistance);
+            if (pivotDiff !== 0) return pivotDiff;
+            return a.targetPerpCoord - b.targetPerpCoord;
+        };
+    }
+    // Horizontal face. Bottom DESC, Top ASC.
+    const sign = alignment === PortAlignment.Bottom ? -1 : 1;
+    return (a, b) => sign * (a.angle - b.angle);
 }

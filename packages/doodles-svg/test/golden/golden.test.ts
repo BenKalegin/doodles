@@ -276,6 +276,17 @@ describe("golden: lr-user-bug-repro", () => {
         }
     });
 
+    it("no edge from the same source crosses another from that source", () => {
+        // Two fan-out cases that were red before barycentric port ordering:
+        //   1. FA → R1..R9 on Bottom face: port-x ↔ target-y order was wrong,
+        //      every horizontal segment crossed every vertical to its right.
+        //   2. AGSUP/AGDA → {TOOLF, BR, LS, TDB, …} on Right face: target-y
+        //      sort placed the close intra-cluster TOOLF below the far Clients
+        //      target BR, so the short edge's turn-up segment got cut by the
+        //      long edge's horizontal extend-right.
+        loaded.L.edges().noSameSourceCrossings();
+    });
+
     it("DeepAgentService → Tool factory is a direct intra-cluster route, not a U-turn", () => {
         // Intra-cluster routes must use a midpoint pivot, not a cluster-clearance
         // pivot — otherwise the elbow overshoots past the cluster's right edge

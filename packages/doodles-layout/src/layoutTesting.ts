@@ -82,6 +82,15 @@ function segmentsIntersect(a1: Coordinate, a2: Coordinate, b1: Coordinate, b2: C
     return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
+function polylinesCross(a: readonly Coordinate[], b: readonly Coordinate[]): boolean {
+    for (let i = 1; i < a.length; i++) {
+        for (let j = 1; j < b.length; j++) {
+            if (segmentsIntersect(a[i - 1]!, a[i]!, b[j - 1]!, b[j]!)) return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Liang–Barsky segment vs. axis-aligned rectangle clip. Returns true when the
  * segment crosses the rectangle's interior with non-zero length. Endpoints
@@ -181,6 +190,12 @@ export interface EdgesAssert {
     noNodeIntersection(): EdgesAssert;
     /** No two edge labels overlap (AABB check). Requires routes supplied to `layoutFor`. */
     noLabelOverlap(): EdgesAssert;
+    /** Two edges that share a source node MUST NOT have intersecting routed
+     *  polylines. Catches port-ordering bugs in fan-outs (when the source
+     *  side has multiple ports going to differently-positioned targets,
+     *  the sort key determines whether the routes cross right at the source).
+     *  Requires routes supplied to `layoutFor`. */
+    noSameSourceCrossings(): EdgesAssert;
 }
 
 export interface ClusterAssert {
@@ -603,6 +618,25 @@ export function layoutFor(result: LaidOutDiagram, options: LayoutForOptions = {}
                 }
                 if (offenders.length > 0) {
                     throw new Error(`Edge-node intersections:\n  ${offenders.join("\n  ")}`);
+                }
+                return api;
+            },
+            noSameSourceCrossings() {
+                const routes = options.routes;
+                if (!routes) throw new Error("noSameSourceCrossings() requires routes supplied to layoutFor()");
+                const offenders: string[] = [];
+                for (let i = 0; i < routes.length; i++) {
+                    for (let j = i + 1; j < routes.length; j++) {
+                        const ra = routes[i]!;
+                        const rb = routes[j]!;
+                        if (ra.sourceNodeId !== rb.sourceNodeId) continue;
+                        if (polylinesCross(ra.polyline, rb.polyline)) {
+                            offenders.push(`"${ra.label || ra.edgeId}" × "${rb.label || rb.edgeId}"`);
+                        }
+                    }
+                }
+                if (offenders.length > 0) {
+                    throw new Error(`Same-source crossings:\n  ${offenders.join("\n  ")}`);
                 }
                 return api;
             },
