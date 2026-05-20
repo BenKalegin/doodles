@@ -9,6 +9,16 @@ export interface ThemeTokens {
         compoundFill: string;
         compoundStroke: string;
         compoundLabel: string;
+        /**
+         * Optional accent palette used for elements that should stand apart
+         * from the neutral node body — currently sequence-diagram lifeline
+         * heads and activation bars. Hosts (axonize, clouddiagram) populate
+         * these from their active theme; absent values fall back to the
+         * neutral node colors so older themes keep working.
+         */
+        accentStroke?: string;
+        accentFill?: string;
+        accentText?: string;
     };
     font: {
         family: string;

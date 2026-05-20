@@ -1,6 +1,7 @@
-import type {Diagram} from "@benkalegin/doodles-core";
+import type {Diagram, SequenceDiagramState} from "@benkalegin/doodles-core";
 import {canRelayoutStructure, relayoutStructure} from "@benkalegin/doodles-layout";
 import {importMermaidFlowchartDiagram} from "./mermaidStructureImporter.js";
+import {importMermaidSequenceDiagram} from "./mermaidSequenceImporter.js";
 import {parseMermaidLayoutHints} from "./mermaidImportUtils.js";
 
 /**
@@ -19,4 +20,18 @@ export async function importMermaidFlowchartWithLayout<T extends Diagram>(
     const imported = await importMermaidFlowchartDiagram(baseDiagram, content) as T;
     if (!canRelayoutStructure(imported)) return imported;
     return relayoutStructure(imported, parseMermaidLayoutHints(content));
+}
+
+/**
+ * One-shot Mermaid sequence import + layout. The importer fully determines
+ * positions today, so the "layout" step is a no-op pass-through — kept as a
+ * wrapper so callers have a stable entry point matching the flowchart one and
+ * so later additions (notes, activate/deactivate spans, autonumber) can refine
+ * placement without changing the call site.
+ */
+export function importMermaidSequenceWithLayout(
+    baseDiagram: Diagram,
+    content: string,
+): SequenceDiagramState {
+    return importMermaidSequenceDiagram(baseDiagram, content);
 }

@@ -107,4 +107,15 @@ export {
     type StructureDiagramState,
 } from "./structureDiagramState.js";
 
+export {
+    type LifelineId,
+    type MessageId,
+    type ActivationId,
+    type LifelinePlacement,
+    type LifelineState,
+    type ActivationState,
+    type MessageState,
+    type SequenceDiagramState,
+} from "./sequenceDiagramState.js";
+
 export const DOODLES_VERSION = "0.2.0";

@@ -6,6 +6,7 @@ import {routeEdges, type EdgeRoute} from "./routing.js";
 
 export {type ThemeTokens, defaultLightTheme, defaultDarkTheme} from "./theme.js";
 export {type EdgeRoute, routeEdges} from "./routing.js";
+export {type SequenceRenderOptions, renderSequenceSvg} from "./sequence.js";
 
 /**
  * Shape of a laid-out Doodle the SVG renderer consumes. Matches what the
