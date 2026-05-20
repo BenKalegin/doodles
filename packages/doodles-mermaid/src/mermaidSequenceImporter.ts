@@ -2,8 +2,12 @@ import {
     type ActivationState,
     type Diagram,
     ElementType,
+    FrameKind,
+    type FrameState,
     type LifelineState,
     type MessageState,
+    NoteAnchor,
+    type NoteState,
     type SequenceDiagramState,
     defaultColorSchema,
     defaultLineStyle,
@@ -45,6 +49,36 @@ const ACTOR_RE = /^actor\s+(\S+)(?:\s+as\s+(.+))?$/i;
 //   A-->>B: msg    async dashed
 //   A-)B: msg      async-open
 const MESSAGE_RE = /^(\S+?)\s*(--?>>?|--?\)|--?>)\s*(\S+?)\s*:\s*(.*)$/;
+// Mermaid autonumber forms:
+//   autonumber            → start=1, step=1
+//   autonumber 5          → start=5, step=1
+//   autonumber 10 100     → start=10, step=100
+//   autonumber off        → disable subsequent message numbering
+const AUTONUMBER_OFF_RE = /^autonumber\s+off\s*$/i;
+const AUTONUMBER_RE = /^autonumber(?:\s+(\d+))?(?:\s+(\d+))?\s*$/i;
+const AUTONUMBER_DEFAULT_START = 1;
+const AUTONUMBER_DEFAULT_STEP = 1;
+
+// Mermaid note forms:
+//   Note over A: text
+//   Note over A,B: text
+//   Note left of A: text
+//   Note right of A: text
+const NOTE_OVER_RE = /^note\s+over\s+([^:]+?)\s*:\s*(.*)$/i;
+const NOTE_LEFT_RE = /^note\s+left\s+of\s+([^:]+?)\s*:\s*(.*)$/i;
+const NOTE_RIGHT_RE = /^note\s+right\s+of\s+([^:]+?)\s*:\s*(.*)$/i;
+const NOTE_VERTICAL_SLOT = 50;
+
+// Mermaid frame block forms. The opening keyword captures the rest of the
+// line as the frame's first-section label. `else` / `and` introduce
+// subsequent sections; `end` closes the innermost frame.
+const FRAME_OPEN_RE = /^(alt|opt|loop|par)\b\s*(.*)$/i;
+const FRAME_ELSE_RE = /^else\b\s*(.*)$/i;
+const FRAME_AND_RE = /^and\b\s*(.*)$/i;
+const FRAME_END_RE = /^end\s*$/i;
+const FRAME_HEADER_GAP = 30;
+const FRAME_FOOTER_GAP = 20;
+const FRAME_SECTION_GAP = 10;
 
 /**
  * Import a Mermaid sequence diagram source into a SequenceDiagramState. Lines
@@ -68,11 +102,78 @@ export function importMermaidSequenceDiagram(
     const lifelines: {[id: string]: LifelineState} = {};
     const messages: {[id: string]: MessageState} = {};
     const activations: {[id: string]: ActivationState} = {};
+    const notes: {[id: string]: NoteState} = {};
+    const frames: {[id: string]: FrameState} = {};
     const participantIdByName: {[name: string]: string} = {};
     const aliasToDisplayName: {[alias: string]: string} = {};
     let lifelineIndex = 0;
     let nextLifelineX = LIFELINE_LEFT_MARGIN;
     let messageOffset = 0;
+    let autonumberCounter: number | null = null;
+    let autonumberStep = AUTONUMBER_DEFAULT_STEP;
+
+    // Track frame nesting. Each entry collects the set of lifelines its
+    // children touch so we can size the rect to cover exactly the involved
+    // participants when the frame closes.
+    const frameStack: Array<{frameId: string; lifelineIds: Set<string>}> = [];
+    function noteLifelineInFrames(lifelineId: string): void {
+        for (const entry of frameStack) entry.lifelineIds.add(lifelineId);
+    }
+
+    function addNote(anchor: NoteAnchor, names: string[], text: string): void {
+        const lifelineIds = names.map(name => getOrCreateLifeline(name));
+        for (const id of lifelineIds) noteLifelineInFrames(id);
+        const noteId = generateId();
+        notes[noteId] = {
+            id: noteId,
+            type: ElementType.Note,
+            anchor,
+            lifelineIds,
+            text: text.trim(),
+            sourceActivationOffset: MESSAGE_VERTICAL_SPACING + messageOffset,
+        };
+        messageOffset += NOTE_VERTICAL_SLOT;
+    }
+
+    function openFrame(kind: FrameKind, label: string): void {
+        // Carve out space for the header strip so the first section's
+        // contents don't collide with the frame label.
+        messageOffset += FRAME_HEADER_GAP;
+        const frameId = generateId();
+        frames[frameId] = {
+            id: frameId,
+            type: ElementType.Cluster,
+            kind,
+            label,
+            sections: [{label, startOffset: messageOffset}],
+            startOffset: messageOffset - FRAME_HEADER_GAP,
+            endOffset: messageOffset,
+            lifelineIds: [],
+        };
+        frameStack.push({frameId, lifelineIds: new Set<string>()});
+    }
+
+    function addFrameSection(label: string): void {
+        const current = frameStack[frameStack.length - 1];
+        if (!current) return;
+        messageOffset += FRAME_SECTION_GAP;
+        frames[current.frameId]!.sections.push({label, startOffset: messageOffset});
+    }
+
+    function closeFrame(): void {
+        const current = frameStack.pop();
+        if (!current) return;
+        const frame = frames[current.frameId]!;
+        messageOffset += FRAME_FOOTER_GAP;
+        frame.endOffset = messageOffset;
+        frame.lifelineIds = [...current.lifelineIds];
+        // Bubble up: nested frames' lifelines must extend the parent's set so
+        // an outer frame still covers participants only touched by inner blocks.
+        const parent = frameStack[frameStack.length - 1];
+        if (parent) {
+            for (const id of frame.lifelineIds) parent.lifelineIds.add(id);
+        }
+    }
 
     function getOrCreateLifeline(name: string): string {
         const normalizedName = name.trim();
@@ -136,6 +237,62 @@ export function importMermaidSequenceDiagram(
     for (const line of lines) {
         if (HEADER_RE.test(line)) continue;
 
+        // Frame block keywords are checked before autonumber/notes/messages
+        // because they prefix the line and affect the offset bookkeeping
+        // every other branch reads from.
+        if (FRAME_END_RE.test(line)) {
+            closeFrame();
+            continue;
+        }
+        const elseMatch = line.match(FRAME_ELSE_RE);
+        if (elseMatch) {
+            addFrameSection(elseMatch[1]!.trim());
+            continue;
+        }
+        const andMatch = line.match(FRAME_AND_RE);
+        if (andMatch) {
+            addFrameSection(andMatch[1]!.trim());
+            continue;
+        }
+        const frameOpenMatch = line.match(FRAME_OPEN_RE);
+        if (frameOpenMatch) {
+            const kind = frameOpenMatch[1]!.toLowerCase() as FrameKind;
+            openFrame(kind, frameOpenMatch[2]!.trim());
+            continue;
+        }
+
+        if (AUTONUMBER_OFF_RE.test(line)) {
+            autonumberCounter = null;
+            continue;
+        }
+        const autonumberMatch = line.match(AUTONUMBER_RE);
+        if (autonumberMatch) {
+            const start = autonumberMatch[1] ? Number(autonumberMatch[1]) : AUTONUMBER_DEFAULT_START;
+            const step = autonumberMatch[2] ? Number(autonumberMatch[2]) : AUTONUMBER_DEFAULT_STEP;
+            autonumberCounter = start;
+            autonumberStep = step;
+            continue;
+        }
+
+        const noteOverMatch = line.match(NOTE_OVER_RE);
+        if (noteOverMatch) {
+            const names = noteOverMatch[1]!.split(",").map(n => n.trim()).filter(Boolean);
+            if (names.length >= 1 && names.length <= 2) {
+                addNote(NoteAnchor.Over, names, noteOverMatch[2]!);
+            }
+            continue;
+        }
+        const noteLeftMatch = line.match(NOTE_LEFT_RE);
+        if (noteLeftMatch) {
+            addNote(NoteAnchor.LeftOf, [noteLeftMatch[1]!.trim()], noteLeftMatch[2]!);
+            continue;
+        }
+        const noteRightMatch = line.match(NOTE_RIGHT_RE);
+        if (noteRightMatch) {
+            addNote(NoteAnchor.RightOf, [noteRightMatch[1]!.trim()], noteRightMatch[2]!);
+            continue;
+        }
+
         const participantMatch = line.match(PARTICIPANT_RE);
         if (participantMatch) {
             const identifier = participantMatch[1]!;
@@ -163,9 +320,11 @@ export function importMermaidSequenceDiagram(
             const [, from, arrow, to, text] = messageMatch;
             const fromLifelineId = getOrCreateLifeline(from!);
             const toLifelineId = getOrCreateLifeline(to!);
+            noteLifelineInFrames(fromLifelineId);
+            noteLifelineInFrames(toLifelineId);
 
             const messageId = generateId();
-            messages[messageId] = {
+            const message: MessageState = {
                 id: messageId,
                 type: ElementType.SequenceMessage,
                 activation1: getActivationForLifeline(fromLifelineId),
@@ -188,13 +347,14 @@ export function importMermaidSequenceDiagram(
                 // unused after the next pass.
                 lineStyle: defaultLineStyle,
             };
+            if (autonumberCounter !== null) {
+                message.sequenceNumber = autonumberCounter;
+                autonumberCounter += autonumberStep;
+            }
+            messages[messageId] = message;
             messageOffset += MESSAGE_VERTICAL_SPACING;
             continue;
         }
-
-        // TODO(autonumber): match /^autonumber\b/i and set a flag on the
-        // emitted SequenceDiagramState. The renderer will number messages
-        // when the flag is set.
     }
 
     // Suppress unused-import warning for defaultColorSchema until the styling
@@ -229,5 +389,7 @@ export function importMermaidSequenceDiagram(
         lifelines,
         messages,
         activations,
+        notes,
+        frames,
     };
 }

@@ -111,10 +111,17 @@ export {
     type LifelineId,
     type MessageId,
     type ActivationId,
+    type NoteId,
+    type FrameId,
+    NoteAnchor,
+    FrameKind,
     type LifelinePlacement,
     type LifelineState,
     type ActivationState,
     type MessageState,
+    type NoteState,
+    type FrameSection,
+    type FrameState,
     type SequenceDiagramState,
 } from "./sequenceDiagramState.js";
 
