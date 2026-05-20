@@ -441,15 +441,18 @@ function adjustPortAlignments(
         // and so the U-detour has an obstacle-free face to enter through.
         if (vertical) {
             const forward = reversed ? dy <= 0 : dy >= 0;
-            srcAlign = forward
-                ? (reversed ? PortAlignment.Top : PortAlignment.Bottom)
-                : (reversed ? PortAlignment.Bottom : PortAlignment.Top);
-            // Back-edges in a TB/BT layout enter the target on Left so the
-            // U-detour has a clear cross-axis face — Left is universally free
-            // since the layered algorithm fills the principal axis (top↔bottom).
-            tgtAlign = forward
-                ? (reversed ? PortAlignment.Bottom : PortAlignment.Top)
-                : PortAlignment.Left;
+            if (forward) {
+                srcAlign = reversed ? PortAlignment.Top : PortAlignment.Bottom;
+                tgtAlign = reversed ? PortAlignment.Bottom : PortAlignment.Top;
+            } else {
+                // Back-edges (and visually-back forward edges from TB column
+                // wrapping) route through the gutter beside the source column,
+                // not through the interior. Mirror of the LR rule in
+                // lrBackEdgeFaces — see docs/layout-rules/back-edge-gutter-routing.md.
+                const faces = tbBackEdgeFaces(dx);
+                srcAlign = faces.src;
+                tgtAlign = faces.tgt;
+            }
         } else {
             const forward = reversed ? dx <= 0 : dx >= 0;
             if (forward) {
@@ -517,6 +520,41 @@ function lrBackEdgeFaces(dy: number): {src: PortAlignment; tgt: PortAlignment} {
         return {src: PortAlignment.Bottom, tgt: PortAlignment.Top};
     }
     return {src: PortAlignment.Top, tgt: PortAlignment.Bottom};
+}
+
+// Mirror of CROSS_ROW_DY_THRESHOLD_PX for vertical (TB/BT) layouts. Columns
+// are wider than rows are tall (typical node width is ~210 px versus ~70 px
+// row height), so the dx that still counts as "same column" is correspondingly
+// larger.
+const CROSS_COL_DX_THRESHOLD_PX = 100;
+
+/**
+ * Port faces for a TB/BT back-edge or visually-back column-wrapped forward
+ * edge, given dx (target.x − source.x) between source and target. Mirror of
+ * lrBackEdgeFaces: TB columns are the analog of LR rows, the side gutters
+ * are the analog of the row gutters.
+ *
+ * Same-column (|dx| ≤ threshold): both faces are Right. The edge steps out
+ *   into the gutter to the right of the column and rises/falls back to the
+ *   target. (Choosing Right over Left is convention — TB diagrams are read
+ *   top-down, the right margin reads as exterior detour space the same way
+ *   the bottom margin does in LR.)
+ * Target right of source (dx > threshold): src Right, tgt Left. Edge uses
+ *   the gutter between the two columns — exits source rightward, enters
+ *   target from the left.
+ * Target left of source (dx < −threshold): src Left, tgt Right. Edge uses
+ *   the gutter from the other direction.
+ *
+ * See docs/layout-rules/tb-back-edge-side-gutter.md for the rationale.
+ */
+function tbBackEdgeFaces(dx: number): {src: PortAlignment; tgt: PortAlignment} {
+    if (Math.abs(dx) <= CROSS_COL_DX_THRESHOLD_PX) {
+        return {src: PortAlignment.Right, tgt: PortAlignment.Right};
+    }
+    if (dx > 0) {
+        return {src: PortAlignment.Right, tgt: PortAlignment.Left};
+    }
+    return {src: PortAlignment.Left, tgt: PortAlignment.Right};
 }
 
 function applyDecisionNodeConvention(

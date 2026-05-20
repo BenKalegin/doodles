@@ -90,5 +90,5 @@ The reader sees a line that exits the diagram, runs across the top margin, and r
 
 ## Limits
 
-- TB / BT layouts: not covered by this rule. Decision-diamond branches in vertical layouts have different semantics — both branches go *down*, neither stays on the row.
+- TB / BT layouts: covered by the mirror rule [tb-back-edge-side-gutter](./tb-back-edge-side-gutter.md). Side gutter takes the role of the row gutter; columns take the role of rows.
 - "Target above source" cross-row case (`dy < −threshold`): handled with `src Top, tgt Bottom` as a placeholder. We don't have a fixture for it yet; revisit when a real diagram surfaces it.

@@ -1,0 +1,12 @@
+graph TB
+    subgraph Tea["Tea party"]
+        Alice[Alice] --> Hatter[Hatter<br/>note one]
+        Hatter --> Cheshire[Cheshire<br/>note two / three]
+        Cheshire --> Caterpillar[Caterpillar]
+        Caterpillar --> Duchess{Duchess<br/>decide?}
+        Duchess -->|resume| Alice
+        Duchess -->|halt| Pat[Pat — emit signal]
+        Alice --> Mock{Mock<br/>full?}
+        Mock -->|yes| Knave[Knave]
+        Knave --> Alice
+    end

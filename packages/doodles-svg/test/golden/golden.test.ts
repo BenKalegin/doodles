@@ -675,6 +675,34 @@ describe("golden: lr-fork-skip-rank", () => {
     });
 });
 
+describe("golden: tb-back-edge-through-cluster", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("tb-back-edge-through-cluster"); });
+
+    // Reproduces a real diagram (anonymized) where two back-edges in a TB
+    // cluster routed straight through non-endpoint nodes:
+    //   Duchess -->|resume| Alice  (down-then-up loop, crossing forward chain)
+    //   Knave    --> Alice         (decision branch close-loop, crossing Mock)
+    // Visual: edges pierced Observation/Caterpillar and >170k?/Mock diamonds.
+    it("no edge passes through a non-endpoint node", () => {
+        loaded.L.edges().noNodeIntersection();
+    });
+
+    it("Duchess → Alice back-edge does not slice forward chain nodes", () => {
+        loaded.L.edge({fromText: "Duchess", toText: "Alice"})
+            .doesNotCross("Hatter", "Cheshire", "Caterpillar");
+    });
+
+    it("Knave → Alice back-edge does not slice the parallel decision branch", () => {
+        loaded.L.edge({fromText: "Knave", toText: "Alice"})
+            .doesNotCross("Mock");
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -696,6 +724,7 @@ describe("golden: fixture inventory", () => {
             "lr-row-mixed-heights",
             "lr-fork-chain-wrap",
             "lr-fork-skip-rank",
+            "tb-back-edge-through-cluster",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);
