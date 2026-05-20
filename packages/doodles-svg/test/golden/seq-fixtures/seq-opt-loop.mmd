@@ -1,0 +1,9 @@
+sequenceDiagram
+participant Alice
+participant Bob
+opt is enabled
+    Alice->>Bob: do it
+end
+loop every minute
+    Alice->>Bob: poll
+end

@@ -30,6 +30,9 @@ const LIFELINE_HORIZONTAL_GAP = 40;
 const LIFELINE_LEFT_MARGIN = 50;
 const LIFELINE_START_OFFSET = 30;
 const MESSAGE_VERTICAL_SPACING = 40;
+// Self-messages render as a U-shape (out, down, back) — they need extra
+// vertical room so the loop arc doesn't crash into the next message.
+const SELF_MESSAGE_VERTICAL_SPACING = 65;
 const DEFAULT_DIAGRAM_HEIGHT = 300;
 const FOOTER_PADDING_BELOW_LAST_MESSAGE = 100;
 const DIAGRAM_BOTTOM_PADDING = 200;
@@ -76,9 +79,13 @@ const FRAME_OPEN_RE = /^(alt|opt|loop|par)\b\s*(.*)$/i;
 const FRAME_ELSE_RE = /^else\b\s*(.*)$/i;
 const FRAME_AND_RE = /^and\b\s*(.*)$/i;
 const FRAME_END_RE = /^end\s*$/i;
-const FRAME_HEADER_GAP = 30;
-const FRAME_FOOTER_GAP = 20;
-const FRAME_SECTION_GAP = 10;
+// Vertical gaps inside a frame. Header has to clear the 22px kind-label tab
+// plus padding so the first message arrow doesn't intersect the chip.
+// Section gap has to leave room for the italic [section] label between the
+// dashed divider and the first message in the new section.
+const FRAME_HEADER_GAP = 45;
+const FRAME_FOOTER_GAP = 25;
+const FRAME_SECTION_GAP = 30;
 
 /**
  * Import a Mermaid sequence diagram source into a SequenceDiagramState. Lines
@@ -352,7 +359,8 @@ export function importMermaidSequenceDiagram(
                 autonumberCounter += autonumberStep;
             }
             messages[messageId] = message;
-            messageOffset += MESSAGE_VERTICAL_SPACING;
+            const isSelfMessage = fromLifelineId === toLifelineId;
+            messageOffset += isSelfMessage ? SELF_MESSAGE_VERTICAL_SPACING : MESSAGE_VERTICAL_SPACING;
             continue;
         }
     }

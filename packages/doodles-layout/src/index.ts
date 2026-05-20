@@ -27,3 +27,15 @@ export {
     type LayoutForOptions,
     layoutFor,
 } from "./layoutTesting.js";
+
+export {
+    type SequenceFacade,
+    type ParticipantsAssert,
+    type MessageQuery,
+    type MessageAssert,
+    type NoteQuery,
+    type NoteAssert,
+    type FrameQuery,
+    type FrameAssert,
+    sequenceFacade,
+} from "./sequenceTesting.js";

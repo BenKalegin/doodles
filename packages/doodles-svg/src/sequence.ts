@@ -50,12 +50,14 @@ const NOTE_MIN_WIDTH = 80;
 const NOTE_DEFAULT_HEIGHT = 32;
 const NOTE_SIDE_GAP = 14;
 const NOTE_CHAR_WIDTH = 7;
-// Soft yellow sticky-note fill. Host can override by setting the
-// `--doodles-note-fill` and `--doodles-note-stroke` CSS variables on a
-// surrounding ancestor (the values inherit through the SVG).
-const NOTE_FILL = "var(--doodles-note-fill, #fff5ad)";
-const NOTE_STROKE = "var(--doodles-note-stroke, #b8a200)";
-const NOTE_TEXT_COLOR = "var(--doodles-note-text, #3a2f00)";
+// Soft cream sticky-note palette — pale enough not to scream against either
+// light or dark canvases, with a darker stroke + dark-brown text that read
+// against the fill. Literal hex (not CSS variables) because Electron's SVG
+// fill attribute doesn't reliably resolve `var()` references when the SVG
+// is parsed as a standalone document.
+const NOTE_FILL = "#fef8d8";
+const NOTE_STROKE = "#caa84a";
+const NOTE_TEXT_COLOR = "#3a2f00";
 // Frame styling — thin neutral border with a small tab in the top-left
 // holding the frame kind + label. Drawn behind messages so they overlay
 // the edges where needed.
@@ -180,11 +182,22 @@ function renderActivation(
 }
 
 interface MessageGeometry {
-    fromX: number;
-    toX: number;
-    y: number;
+    /** Polyline points the arrow body follows. Length 2 for normal messages
+     *  (horizontal), 4 for self-message U-shapes. */
+    points: Array<{x: number; y: number}>;
+    /** Position to place the label, plus the maximum width it can occupy. */
+    labelX: number;
+    labelY: number;
     label: string;
+    /** Origin of the arrow — where the autonumber bubble attaches. */
+    originX: number;
+    originY: number;
 }
+
+// Self-message loop dimensions: how far the call arc extends rightward off
+// the source activation bar and how deep the loop drops before returning.
+const SELF_MESSAGE_LOOP_WIDTH = 40;
+const SELF_MESSAGE_LOOP_HEIGHT = 30;
 
 function computeMessageGeometry(
     message: MessageState,
@@ -201,23 +214,46 @@ function computeMessageGeometry(
     const fromCenterX = fromLifeline.placement.headBounds.x + fromLifeline.placement.headBounds.width / 2;
     const toCenterX = toLifeline.placement.headBounds.x + toLifeline.placement.headBounds.width / 2;
 
-    // Activation bars are 12px wide centered on the lifeline. Attach the
-    // arrow to the side of the bar that faces the other lifeline so the
-    // tip doesn't draw on top of the activation box.
-    const fromOnLeft = fromCenterX <= toCenterX;
-    const fromX = fromOnLeft ? fromCenterX + ACTIVATION_WIDTH / 2 : fromCenterX - ACTIVATION_WIDTH / 2;
-    const toX = fromOnLeft ? toCenterX - ACTIVATION_WIDTH / 2 : toCenterX + ACTIVATION_WIDTH / 2;
-
-    // The importer fills `sourceActivationOffset` with the message's vertical
-    // offset within the lifeline (already includes the LIFELINE_HEAD_Y +
-    // lifelineStart base). Use the from-lifeline as anchor; same y for both
-    // ends because messages are horizontal in v1.
     const baseY = fromLifeline.placement.headBounds.y
         + fromLifeline.placement.headBounds.height
         + fromLifeline.placement.lifelineStart
         + message.sourceActivationOffset;
 
-    return {fromX, toX, y: baseY, label: message.text};
+    // Self-message: render as a U-shape that exits the activation bar to the
+    // right, drops by SELF_MESSAGE_LOOP_HEIGHT, then returns to the lifeline
+    // with the arrowhead pointing left.
+    if (fromActivation.lifelineId === toActivation.lifelineId) {
+        const exitX = fromCenterX + ACTIVATION_WIDTH / 2;
+        const loopX = exitX + SELF_MESSAGE_LOOP_WIDTH;
+        const returnY = baseY + SELF_MESSAGE_LOOP_HEIGHT;
+        return {
+            points: [
+                {x: exitX, y: baseY},
+                {x: loopX, y: baseY},
+                {x: loopX, y: returnY},
+                {x: exitX, y: returnY},
+            ],
+            labelX: loopX + 6,
+            labelY: baseY + SELF_MESSAGE_LOOP_HEIGHT / 2,
+            label: message.text,
+            originX: exitX,
+            originY: baseY,
+        };
+    }
+
+    // Cross-lifeline message: a single horizontal segment connecting the
+    // facing edges of the two activation bars.
+    const fromOnLeft = fromCenterX <= toCenterX;
+    const fromX = fromOnLeft ? fromCenterX + ACTIVATION_WIDTH / 2 : fromCenterX - ACTIVATION_WIDTH / 2;
+    const toX = fromOnLeft ? toCenterX - ACTIVATION_WIDTH / 2 : toCenterX + ACTIVATION_WIDTH / 2;
+    return {
+        points: [{x: fromX, y: baseY}, {x: toX, y: baseY}],
+        labelX: (fromX + toX) / 2,
+        labelY: baseY - MESSAGE_TEXT_LIFT_PX - 9,
+        label: message.text,
+        originX: fromX,
+        originY: baseY,
+    };
 }
 
 function renderMessage(
@@ -232,7 +268,8 @@ function renderMessage(
     const fill = message.isAsync ? "none" : (message.lineStyle.fillColor || stroke);
     const dashAttr = message.isReturn ? ` stroke-dasharray="${MESSAGE_DASH}"` : "";
 
-    const line = `<line x1="${geometry.fromX}" y1="${geometry.y}" x2="${geometry.toX}" y2="${geometry.y}" stroke="${stroke}" stroke-width="${MESSAGE_STROKE_WIDTH}"${dashAttr} />`;
+    const polylinePoints = geometry.points.map(p => `${p.x},${p.y}`).join(" ");
+    const line = `<polyline points="${polylinePoints}" fill="none" stroke="${stroke}" stroke-width="${MESSAGE_STROKE_WIDTH}" stroke-linejoin="round"${dashAttr} />`;
 
     const tip = renderArrowTip(geometry, message.isAsync, stroke, fill);
     const label = renderMessageLabel(geometry, theme);
@@ -247,13 +284,11 @@ function renderSequenceNumber(
     sequenceNumber: number,
     theme: ThemeTokens,
 ): string {
-    const cx = geometry.fromX;
-    const cy = geometry.y;
+    const cx = geometry.originX;
+    const cy = geometry.originY;
     const bubbleStroke = theme.colors.accentStroke ?? theme.colors.edgeStroke;
     const bubbleFill = theme.colors.accentStroke ?? theme.colors.edgeStroke;
-    const labelColor = theme.colors.background !== "transparent"
-        ? theme.colors.background
-        : "currentColor";
+    const labelColor = theme.colors.accentText ?? "currentColor";
     const circle = `<circle cx="${cx}" cy="${cy}" r="${SEQUENCE_NUMBER_RADIUS}" fill="${bubbleFill}" stroke="${bubbleStroke}" />`;
     const text = `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-family="${xmlEscape(theme.font.family)}" font-size="${SEQUENCE_NUMBER_FONT_SIZE}" font-weight="bold" fill="${labelColor}">${sequenceNumber}</text>`;
     return circle + text;
@@ -265,21 +300,34 @@ function renderArrowTip(
     stroke: string,
     fill: string,
 ): string {
+    // Tip position + orientation come from the last segment of the polyline.
+    // For horizontal messages this is just (fromX,y) → (toX,y); for self-
+    // message U-shapes it's the final return segment, so the arrowhead
+    // points back at the lifeline regardless of which way the U curves.
+    const n = geometry.points.length;
+    const tip = geometry.points[n - 1]!;
+    const prev = geometry.points[n - 2]!;
+    const dx = tip.x - prev.x;
+    const dy = tip.y - prev.y;
     const length = isAsync ? ASYNC_TIP_LENGTH : SYNC_TIP_LENGTH;
-    const dx = geometry.toX - geometry.fromX;
-    const direction = dx >= 0 ? 1 : -1;
-    const tipX = geometry.toX;
-    const tipY = geometry.y;
-    const baseX = tipX - direction * length;
-    const upperY = tipY - ARROW_TIP_WIDTH / 2;
-    const lowerY = tipY + ARROW_TIP_WIDTH / 2;
+    const segLen = Math.hypot(dx, dy) || 1;
+    const ux = dx / segLen;
+    const uy = dy / segLen;
+    const baseX = tip.x - ux * length;
+    const baseY = tip.y - uy * length;
+    // Perpendicular vector with magnitude = arrow half-width.
+    const px = -uy * (ARROW_TIP_WIDTH / 2);
+    const py = ux * (ARROW_TIP_WIDTH / 2);
+    const upperX = baseX + px;
+    const upperY = baseY + py;
+    const lowerX = baseX - px;
+    const lowerY = baseY - py;
 
     if (isAsync) {
         // Open V — two strokes, no fill — matches clouddiagram's async glyph.
-        return `<polyline points="${baseX},${upperY} ${tipX},${tipY} ${baseX},${lowerY}" fill="none" stroke="${stroke}" stroke-width="${MESSAGE_STROKE_WIDTH}" stroke-linejoin="round" />`;
+        return `<polyline points="${upperX},${upperY} ${tip.x},${tip.y} ${lowerX},${lowerY}" fill="none" stroke="${stroke}" stroke-width="${MESSAGE_STROKE_WIDTH}" stroke-linejoin="round" />`;
     }
-    // Filled triangle for sync (and return) messages.
-    return `<polygon points="${tipX},${tipY} ${baseX},${upperY} ${baseX},${lowerY}" fill="${fill}" stroke="${stroke}" stroke-width="${MESSAGE_STROKE_WIDTH}" stroke-linejoin="round" />`;
+    return `<polygon points="${tip.x},${tip.y} ${upperX},${upperY} ${lowerX},${lowerY}" fill="${fill}" stroke="${stroke}" stroke-width="${MESSAGE_STROKE_WIDTH}" stroke-linejoin="round" />`;
 }
 
 function frameYBase(diagram: SequenceDiagramState): number | undefined {
@@ -337,7 +385,12 @@ function renderFrameTab(
     const kindWidth = kindLabel.length * FRAME_TAB_CHAR_WIDTH + FRAME_TAB_PADDING_X * 2;
     const tabRect = `<rect x="${frameLeft}" y="${frameTop}" width="${kindWidth}" height="${FRAME_TAB_HEIGHT}" fill="${stroke}" fill-opacity="${FRAME_BORDER_OPACITY}" stroke="${stroke}" stroke-opacity="${FRAME_BORDER_OPACITY}" stroke-width="1" />`;
     const fontFamily = xmlEscape(theme.font.family);
-    const kindText = `<text x="${frameLeft + kindWidth / 2}" y="${frameTop + FRAME_TAB_HEIGHT / 2 + FRAME_TAB_PADDING_Y / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamily}" font-size="${FRAME_TAB_FONT_SIZE}" font-weight="bold" fill="${theme.colors.background !== "transparent" ? theme.colors.background : "currentColor"}">${xmlEscape(kindLabel)}</text>`;
+    // accentText (= host textPrimary in axonize) is the only color guaranteed
+    // to contrast against the accent-tinted tab fill across light/dark
+    // themes. Background-as-fill produces same-color-on-same-color when the
+    // theme background is "transparent" (the doodles default).
+    const kindTextColor = theme.colors.accentText ?? theme.colors.nodeText;
+    const kindText = `<text x="${frameLeft + kindWidth / 2}" y="${frameTop + FRAME_TAB_HEIGHT / 2 + FRAME_TAB_PADDING_Y / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamily}" font-size="${FRAME_TAB_FONT_SIZE}" font-weight="bold" fill="${kindTextColor}">${xmlEscape(kindLabel)}</text>`;
     const labelText = fullLabel
         ? `<text x="${frameLeft + kindWidth + FRAME_TAB_KIND_GAP}" y="${frameTop + FRAME_TAB_HEIGHT / 2 + FRAME_TAB_PADDING_Y / 2}" text-anchor="start" dominant-baseline="central" font-family="${fontFamily}" font-size="${FRAME_TAB_FONT_SIZE}" font-style="italic" fill="${theme.colors.edgeText}">[${xmlEscape(fullLabel)}]</text>`
         : "";
@@ -450,15 +503,10 @@ function noteBounds(
 
 function renderMessageLabel(geometry: MessageGeometry, theme: ThemeTokens): string {
     if (!geometry.label) return "";
-    const cx = (geometry.fromX + geometry.toX) / 2;
-    const cy = geometry.y - MESSAGE_TEXT_LIFT_PX - theme.font.lineHeight / 2;
-    // `xmlEscape` is implicitly applied inside richTextSvg via the parsed
-    // spans; the only direct escape we need is for the message label that
-    // doesn't carry inline HTML — parseRichText handles both cases.
     return richTextSvg(
         parseRichText(geometry.label),
-        cx,
-        cy,
+        geometry.labelX,
+        geometry.labelY,
         theme.font.family,
         theme.font.size,
         theme.font.lineHeight,
