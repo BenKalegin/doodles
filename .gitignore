@@ -17,3 +17,6 @@ coverage/
 .claude/*
 !.claude/skills/
 !.claude/commands/
+
+# axonize vault metadata — created when this repo is opened as an axonize vault
+.axonize/
