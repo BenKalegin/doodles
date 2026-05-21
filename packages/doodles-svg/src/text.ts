@@ -15,9 +15,16 @@ interface RichLine {
  * Parse a label string carrying inline HTML-ish tags `<b>`, `<strong>`,
  * `<i>`, `<em>`, `<u>`, `<br>` and explicit newlines into a list of lines,
  * each with styled spans. Unknown tags are stripped.
+ *
+ * Also normalizes literal `\n` sequences (two characters: backslash + n) into
+ * real newlines so source text written as `participant A as "Foo\nBar"` —
+ * which mermaid treats as a line break — renders multi-line in the head
+ * rectangle instead of showing `\n` verbatim.
  */
 export function parseRichText(text: string): RichLine[] {
-    const normalized = text.replace(/<br\s*\/?>/gi, "\n");
+    const normalized = text
+        .replace(/\\n/g, "\n")
+        .replace(/<br\s*\/?>/gi, "\n");
     const lines: RichLine[] = [];
     for (const lineSrc of normalized.split("\n")) {
         lines.push(parseLine(lineSrc));

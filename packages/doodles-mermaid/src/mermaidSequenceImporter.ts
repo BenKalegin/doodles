@@ -82,7 +82,10 @@ const FRAME_END_RE = /^end\s*$/i;
 // Vertical gaps inside a frame. Header has to clear the 22px kind-label tab
 // plus padding so the first message arrow doesn't intersect the chip.
 // Section gap has to leave room for the italic [section] label between the
-// dashed divider and the first message in the new section.
+// dashed divider and the first message in the new section. The pre-open
+// gap separates the frame's top border from the preceding message's arrow
+// so they don't paint at the same Y.
+const FRAME_PRE_OPEN_GAP = 18;
 const FRAME_HEADER_GAP = 45;
 const FRAME_FOOTER_GAP = 25;
 const FRAME_SECTION_GAP = 30;
@@ -143,9 +146,12 @@ export function importMermaidSequenceDiagram(
     }
 
     function openFrame(kind: FrameKind, label: string): void {
-        // Carve out space for the header strip so the first section's
-        // contents don't collide with the frame label.
-        messageOffset += FRAME_HEADER_GAP;
+        // First reserve a gap above the frame top so the border doesn't draw
+        // at the same Y as the previous message's arrow. Then the frame's
+        // top sits at this padded offset, and the header gap separates the
+        // top border from the first section's content.
+        const frameTopOffset = messageOffset + FRAME_PRE_OPEN_GAP;
+        messageOffset = frameTopOffset + FRAME_HEADER_GAP;
         const frameId = generateId();
         frames[frameId] = {
             id: frameId,
@@ -153,7 +159,7 @@ export function importMermaidSequenceDiagram(
             kind,
             label,
             sections: [{label, startOffset: messageOffset}],
-            startOffset: messageOffset - FRAME_HEADER_GAP,
+            startOffset: frameTopOffset,
             endOffset: messageOffset,
             lifelineIds: [],
         };

@@ -90,20 +90,28 @@ export function renderSequenceSvg(
 
     const layers: string[] = [];
 
-    // Lifelines first (head rect + dashed vertical), then activations on top
-    // of the lifeline, then frames behind messages so arrows can overlap
-    // frame borders cleanly, then messages and notes on top.
+    // Render order, back to front:
+    //   1. Lifeline heads + dashed verticals
+    //   2. Frames (alt/opt/loop/par rectangles)
+    //   3. Activations — drawn *after* frames so the accent activation bars
+    //      stay visually intact even when a frame border crosses them.
+    //   4. Messages — sit above frame borders so arrows can overlap the
+    //      edges where the message extends slightly beyond the framed area.
+    //   5. Notes — opaque sticky rectangles on top of everything else.
     for (const lifeline of Object.values(diagram.lifelines)) {
         layers.push(renderLifeline(lifeline, theme));
-        for (const activationId of lifeline.activations) {
-            const activation = diagram.activations[activationId];
-            if (activation) layers.push(renderActivation(lifeline, activation, theme));
-        }
     }
 
     for (const frame of Object.values(diagram.frames)) {
         const rendered = renderFrame(frame, diagram, theme);
         if (rendered) layers.push(rendered);
+    }
+
+    for (const lifeline of Object.values(diagram.lifelines)) {
+        for (const activationId of lifeline.activations) {
+            const activation = diagram.activations[activationId];
+            if (activation) layers.push(renderActivation(lifeline, activation, theme));
+        }
     }
 
     for (const message of Object.values(diagram.messages)) {
@@ -120,7 +128,7 @@ export function renderSequenceSvg(
         ? `<rect x="${-padding}" y="${-padding}" width="${width + padding * 2}" height="${height + padding * 2}" fill="${theme.colors.background}" />`
         : "";
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${width + padding * 2}" height="${height + padding * 2}">${bg}${layers.join("")}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="doodles-svg doodles-svg-sequence" viewBox="${viewBox}" width="${width + padding * 2}" height="${height + padding * 2}">${bg}${layers.join("")}</svg>`;
 }
 
 function renderLifeline(lifeline: LifelineState, theme: ThemeTokens): string {

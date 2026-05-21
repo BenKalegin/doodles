@@ -66,7 +66,7 @@ export function renderSvg(diagram: RenderableDoodle, options: RenderOptions = {}
         ? `<rect x="${-padding}" y="${-padding}" width="${width + padding * 2}" height="${height + padding * 2}" fill="${theme.colors.background}" />`
         : "";
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${width + padding * 2}" height="${height + padding * 2}">${bg}${arrowMarker}${layers.join("")}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="doodles-svg doodles-svg-structure" viewBox="${viewBox}" width="${width + padding * 2}" height="${height + padding * 2}">${bg}${arrowMarker}${layers.join("")}</svg>`;
 }
 
 // ── Cluster ──────────────────────────────────────────────────────────────────
