@@ -384,6 +384,19 @@ describe("golden: lr-branched-chain", () => {
         loaded.L.node("Reduction history of chat").rightOf("checkpointer.aget v1");
     });
 
+    it("no edge passes through a non-endpoint node", () => {
+        // Regression: MERGE1 → search_agents was flipped to Bottom→Top by
+        // applyCrossRowForkExit (MERGE1 is a fork, |dy| > 70), but the V↔V
+        // horizontal leg still clipped Supervisor in the gutter between
+        // the MERGE1 row and the search_agents row. Separately, SUP → SUM
+        // (back-edge to a far-left, lower-row node) routed Bottom→Top with
+        // a horizontal sweep that crossed the entire row of intermediate
+        // nodes (search_agents, Full prior messages, checkpointer.aget v2).
+        // The fix detects both V↔V-leg blockings in routeAroundIntermediateNodes
+        // and escapes via a same-face U-detour.
+        loaded.L.edges().noNodeIntersection();
+    });
+
     it("svg snapshot", () => {
         expect(loaded.svg).toMatchSnapshot();
     });

@@ -676,27 +676,40 @@ function applyCrossRowForkExit(
 }
 
 /**
- * Forward, same-row edges that would otherwise slice through a non-endpoint
- * node get detoured via the cross-axis face (Bottom → Top for LR), routing
- * through the gutter below the source row instead of straight across the
- * row at the shared centerline.
+ * Detour LR edges that would otherwise slice through a non-endpoint node.
  *
- * Canonical case: a decision diamond `SUM` with two outgoing branches —
- * `SUM → COMPRESS` (adjacent column) and `SUM → PASS` (skips the COMPRESS
- * column to land at the merge point). applyDecisionNodeConvention places
- * both on Right, port distribution gives them slightly different y ratios,
- * but they both still run horizontal across the row — the longer one slices
- * through COMPRESS.
+ * Two route shapes can clip an unrelated node, because the router only knows
+ * about source/target/cluster bboxes — never about siblings in between:
  *
- * The router has no obstacle awareness. Rather than build that in
- * comprehensively, we detect the specific case here at port-assignment
- * time: if the source-target x-strip contains another node whose y-bbox
- * overlaps the edge's center y, switch the edge to a Bottom → Top detour
- * through the gutter.
+ *   H↔H Z-route (in-flow forward, e.g. Right→Left for LR). The vertical leg
+ *     at `midX` lies in the gutter between src.right and tgt.left, sweeping
+ *     y from src.centerY to tgt.centerY. A sibling whose column straddles
+ *     that gutter and whose row overlaps the y-band gets clipped. Canonical
+ *     case: a decision diamond with two outgoing branches where the longer
+ *     one skips the adjacent column.
+ *
+ *   V↔V Z-route (cross-axis, e.g. Bottom→Top from `lrBackEdgeFaces`,
+ *     `applyCrossRowForkExit`, or `applyDecisionNodeConvention`). The
+ *     horizontal leg at `midY` lies in the gutter between src.bottom and
+ *     tgt.top, sweeping x from src.centerX to tgt.centerX. A sibling sitting
+ *     in that inter-row gutter gets clipped — common when a back-edge or a
+ *     fork branch crosses an entire row of intermediate nodes.
+ *
+ * Strategy: pick the route that doesn't slice a sibling. `lrBackEdgeFaces`
+ * and `applyCrossRowForkExit` set V↔V for visual separation without checking
+ * obstacles, so when their choice would clip, we revert to H↔H. Symmetrically,
+ * an H↔H Z that would clip switches to V↔V. If both shapes are blocked, we
+ * leave the assignment alone — better the ugly route than to introduce a new
+ * crossing (a same-face U-detour can itself clip when intermediate nodes share
+ * the source or target column).
+ *
+ * Back-edge H↔H routes use `crossAxisBackEdgeDetour` (a 5-segment side detour
+ * around the top or bottom of the combined bbox), not the vertical-leg Z. The
+ * side detour runs through the diagram's top/bottom margin which is generally
+ * clear, so we treat back-edge H↔H as un-blocked for the purpose of this pass.
  *
  * No-op on TB/BT (a parallel rule for column obstacles would be needed and
- * hasn't surfaced yet) and on edges already on a cross-axis face from an
- * earlier pass.
+ * hasn't surfaced yet).
  */
 function routeAroundIntermediateNodes(
     dia: Diagram & DiagramInternal,
@@ -713,6 +726,7 @@ function routeAroundIntermediateNodes(
     const inFlowTgt = hints.direction === LayoutDirection.RightToLeft
         ? PortAlignment.Right
         : PortAlignment.Left;
+    const reversed = hints.direction === LayoutDirection.RightToLeft;
 
     // Skip cluster-related edges. Cluster routing has its own face-blocking
     // and cross-cluster exit logic (applyCrossClusterExitFace) that runs after
@@ -728,33 +742,98 @@ function routeAroundIntermediateNodes(
     }
 
     for (const a of assignments) {
-        if (a.srcAlign !== inFlowSrc || a.tgtAlign !== inFlowTgt) continue;
-        if (Math.abs(a.dy) > CROSS_ROW_DY_THRESHOLD_PX) continue;
         if (nodeParents[a.srcNodeId] || nodeParents[a.tgtNodeId]) continue;
         const src = newNodes[a.srcNodeId]?.bounds;
         const tgt = newNodes[a.tgtNodeId]?.bounds;
         if (!src || !tgt) continue;
-        const xMin = Math.min(src.x + src.width, tgt.x);
-        const xMax = Math.max(src.x + src.width, tgt.x);
-        if (xMax - xMin <= 0) continue;
-        const srcCenterY = src.y + src.height / 2;
-        const tgtCenterY = tgt.y + tgt.height / 2;
-        const yMin = Math.min(srcCenterY, tgtCenterY);
-        const yMax = Math.max(srcCenterY, tgtCenterY);
-        let blocked = false;
-        for (const [id, n] of Object.entries(newNodes)) {
-            if (id === a.srcNodeId || id === a.tgtNodeId) continue;
-            const b = n?.bounds;
-            if (!b) continue;
-            if (b.x + b.width <= xMin || b.x >= xMax) continue;
-            if (b.y + b.height <= yMin || b.y >= yMax) continue;
-            blocked = true;
-            break;
+
+        const onInFlowH = a.srcAlign === inFlowSrc && a.tgtAlign === inFlowTgt;
+        const onCrossAxisV =
+            (a.srcAlign === PortAlignment.Bottom && a.tgtAlign === PortAlignment.Top) ||
+            (a.srcAlign === PortAlignment.Top && a.tgtAlign === PortAlignment.Bottom);
+        if (!onInFlowH && !onCrossAxisV) continue;
+
+        const backEdge = reversed ? a.dx > 0 : a.dx < 0;
+        const hBlocked = backEdge ? false : blockedInVerticalLegStrip(src, tgt, a, newNodes);
+        const vBlocked = blockedInHorizontalLegStrip(src, tgt, a, newNodes);
+
+        if (onInFlowH) {
+            if (!hBlocked || vBlocked) continue;
+            a.srcAlign = a.dy >= 0 ? PortAlignment.Bottom : PortAlignment.Top;
+            a.tgtAlign = a.dy >= 0 ? PortAlignment.Top : PortAlignment.Bottom;
+            continue;
         }
-        if (!blocked) continue;
-        a.srcAlign = PortAlignment.Bottom;
-        a.tgtAlign = PortAlignment.Top;
+        // onCrossAxisV — revert to H↔H if V↔V is blocked and H↔H is clear.
+        if (!vBlocked || hBlocked) continue;
+        a.srcAlign = inFlowSrc;
+        a.tgtAlign = inFlowTgt;
     }
+}
+
+// Mirrors SAME_FACE_DETOUR_PAD in doodles-svg routing.ts. The router's
+// pivotBetweenContainers clamps midX/midY to [outer + pad, outer - pad]; we
+// shrink the candidate leg strip by the same pad so a node touching the
+// gutter boundary doesn't get falsely flagged as blocking.
+const PIVOT_CLAMP_PAD_PX = 20;
+
+/**
+ * Is the vertical leg of an H↔H Z-route between `src` and `tgt` blocked by a
+ * non-endpoint node? The leg lives in the column gutter between src and tgt
+ * (shrunk by the pivot clamp pad) and spans y from src.centerY to tgt.centerY.
+ */
+function blockedInVerticalLegStrip(
+    src: { x: number; y: number; width: number; height: number },
+    tgt: { x: number; y: number; width: number; height: number },
+    a: LinkAssignment,
+    newNodes: DiagramInternal["nodes"],
+): boolean {
+    const xMin = Math.min(src.x + src.width, tgt.x) + PIVOT_CLAMP_PAD_PX;
+    const xMax = Math.max(src.x + src.width, tgt.x) - PIVOT_CLAMP_PAD_PX;
+    if (xMax <= xMin) return false;
+    const srcCenterY = src.y + src.height / 2;
+    const tgtCenterY = tgt.y + tgt.height / 2;
+    const yMin = Math.min(srcCenterY, tgtCenterY);
+    const yMax = Math.max(srcCenterY, tgtCenterY);
+    return anyNonEndpointNodeInRect(xMin, xMax, yMin, yMax, a, newNodes);
+}
+
+/**
+ * Is the horizontal leg of a V↔V Z-route between `src` and `tgt` blocked by a
+ * non-endpoint node? The leg lives in the row gutter between src.bottom and
+ * tgt.top (shrunk by the pivot clamp pad, or mirrored for Top→Bottom) and
+ * spans x from src.centerX to tgt.centerX. If the two nodes overlap
+ * vertically there is no gutter to clip, so the check is a no-op.
+ */
+function blockedInHorizontalLegStrip(
+    src: { x: number; y: number; width: number; height: number },
+    tgt: { x: number; y: number; width: number; height: number },
+    a: LinkAssignment,
+    newNodes: DiagramInternal["nodes"],
+): boolean {
+    const srcCenterX = src.x + src.width / 2;
+    const tgtCenterX = tgt.x + tgt.width / 2;
+    const xMin = Math.min(srcCenterX, tgtCenterX);
+    const xMax = Math.max(srcCenterX, tgtCenterX);
+    const yMin = Math.min(src.y + src.height, tgt.y + tgt.height) + PIVOT_CLAMP_PAD_PX;
+    const yMax = Math.max(src.y, tgt.y) - PIVOT_CLAMP_PAD_PX;
+    if (yMax <= yMin) return false;
+    return anyNonEndpointNodeInRect(xMin, xMax, yMin, yMax, a, newNodes);
+}
+
+function anyNonEndpointNodeInRect(
+    xMin: number, xMax: number, yMin: number, yMax: number,
+    a: LinkAssignment,
+    newNodes: DiagramInternal["nodes"],
+): boolean {
+    for (const [id, n] of Object.entries(newNodes)) {
+        if (id === a.srcNodeId || id === a.tgtNodeId) continue;
+        const b = n?.bounds;
+        if (!b) continue;
+        if (b.x + b.width <= xMin || b.x >= xMax) continue;
+        if (b.y + b.height <= yMin || b.y >= yMax) continue;
+        return true;
+    }
+    return false;
 }
 
 function decisionOutputFace(
