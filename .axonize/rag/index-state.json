@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "modelId": "local-minilm",
+  "dimensions": 384,
+  "chunkCount": 84,
+  "fileHashes": {
+    "docs/layout-rules/back-edge-gutter-routing.md": "8c023fd6ff3b86c4526a2bdec7046c662ac2f5913753c7c38481c83b8b4e644e",
+    "docs/layout-rules/linear-tail-after-fork.md": "26dc569e4367f0dcacac87ddec892889d5d87c58cb5b4e931d74f1b756ae44d8",
+    "docs/layout-rules/README.md": "15ffc68f48a7effb8840ad150b3235f5655962f2a2d81e59a58b9dcf08ad97fe",
+    "CLAUDE.md": "6a48129844ed14b11ae1984271ceb5d536e1529be15fcea6f2aa5eca80deb554",
+    "README.md": "bb3b587592393198f7d99494c18b0478568e5bc6e7e49406f68ac31d867eccb5"
+  }
+}
