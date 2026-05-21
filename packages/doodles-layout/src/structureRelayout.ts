@@ -574,11 +574,23 @@ function applyDecisionNodeConvention(
         (incomingByNode[a.tgtNodeId] ??= []).push(a);
     }
 
+    const principalFaces: ReadonlySet<PortAlignment> = vertical
+        ? new Set([PortAlignment.Top, PortAlignment.Bottom])
+        : new Set([PortAlignment.Left, PortAlignment.Right]);
+
     for (const el of Object.values(dia.elements)) {
         if (el?.type !== ElementType.ClassNode) continue;
         if (el.flowchartKind !== FlowchartNodeKind.Decision) continue;
 
-        for (const a of incomingByNode[el.id] ?? []) a.tgtAlign = inputSide;
+        // Force the input face only for edges already aligned to the principal
+        // axis (forward in-flow edges). A cross-axis target alignment was set
+        // by lrBackEdgeFaces / tbBackEdgeFaces to route a visually-back or
+        // row-wrapped edge through a gutter; overriding it back to the input
+        // face would send the edge straight across the row, slicing through
+        // every node between source and target.
+        for (const a of incomingByNode[el.id] ?? []) {
+            if (principalFaces.has(a.tgtAlign)) a.tgtAlign = inputSide;
+        }
         // Outgoing branches share the main output face — distribution along
         // that face (port ratios) is left to distributePortsAlongSides. The
         // exception is row-wrapped LR layouts: when a target sits in a

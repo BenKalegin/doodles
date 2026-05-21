@@ -181,37 +181,99 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
         return arrowCount >= 2;
     }
 
-    // Per-part inline shape patterns mirror what `flowMatch` (the single-arrow
-     // path) accepts for an endpoint. Each match group is the label text inside
-     // the corresponding mermaid shape syntax.
-    const INLINE_SHAPE_RE =
-        /^([\w-]+)\s*(?:\[\/([^\]]+)\/\]|\[\(("[^"]+"|.+?)\)\]|\[([^\]]+)\]|\(\[([^\]]+)\]\)|\(\(([^)]+)\)\)|\(([^)]+)\)|\{([^}]+)\})?$/;
-
     function splitChainSide(side: string): string[] {
         // Each `&`-separated segment can include an inline shape declaration
         // (e.g. `MERGE1[Reduction history]`). Without parsing it, the segment
         // gets dropped and the line silently loses its edges.
         const ids: string[] = [];
         for (const raw of side.split(/\s*&\s*/)) {
-            const trimmed = raw.trim();
-            if (!trimmed) continue;
-            const match = trimmed.match(INLINE_SHAPE_RE);
-            if (!match) continue;
-            const id = match[1]!;
-            const rawLabel = match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6] ?? match[7] ?? match[8];
-            if (rawLabel !== undefined) {
-                const label = normalizeLabel(stripLabelQuotes(rawLabel));
-                const shape: "process" | "decision" | "terminator" | "input-output" =
-                    match[8] ? "decision"
-                    : match[2] ? "input-output"
-                    : (match[5] || match[6] || match[7] || match[3]) ? "terminator"
-                    : "process";
-                getOrCreateNode(id, label, toFlowchartKind(shape));
-                trackSubgraphMembership(id);
+            const part = parseChainPart(raw);
+            if (!part) continue;
+            if (part.label !== undefined) {
+                getOrCreateNode(part.id, part.label, toFlowchartKind(part.shape));
+                trackSubgraphMembership(part.id);
             }
-            ids.push(id);
+            ids.push(part.id);
         }
         return ids;
+    }
+
+    // A chain-side segment is `<id>` optionally followed by an inline shape
+    // declaration. Labels may themselves contain `[`, `]`, `(`, `)`, `{`, `}`
+    // (e.g. `CA[create_agent(middleware=[handle_tool_errors])]`), so the
+    // matching close must be located by bracket balancing, not regex.
+    function parseChainPart(raw: string):
+        { id: string; label?: string; shape?: "process" | "decision" | "terminator" | "input-output" }
+        | undefined {
+        const trimmed = raw.trim();
+        if (!trimmed) return undefined;
+        const idMatch = trimmed.match(/^([\w-]+)\s*/);
+        if (!idMatch) return undefined;
+        const id = idMatch[1]!;
+        const rest = trimmed.slice(idMatch[0].length);
+        if (rest.length === 0) return {id};
+        const shape = matchInlineShape(rest);
+        if (!shape || shape.consumed !== rest.length) return undefined;
+        const label = normalizeLabel(stripLabelQuotes(shape.label));
+        return label === undefined ? {id} : {id, label, shape: shape.shape};
+    }
+
+    // Inline shape openers in detection order: longer prefixes first so e.g.
+    // `[(` (cylinder) wins over `[` (square). For each shape, the closing
+    // delimiter is located by counting balanced inner brackets.
+    interface InlineShapeOpener {
+        open: string;
+        close: string;
+        shape: "process" | "decision" | "terminator" | "input-output";
+    }
+    const INLINE_SHAPE_OPENERS: InlineShapeOpener[] = [
+        {open: "[/", close: "/]", shape: "input-output"},
+        {open: "[(", close: ")]", shape: "terminator"},
+        {open: "([", close: "])", shape: "terminator"},
+        {open: "((", close: "))", shape: "terminator"},
+        {open: "[",  close: "]",  shape: "process"},
+        {open: "(",  close: ")",  shape: "terminator"},
+        {open: "{",  close: "}",  shape: "decision"},
+    ];
+
+    function matchInlineShape(rest: string):
+        { label: string; shape: "process" | "decision" | "terminator" | "input-output"; consumed: number }
+        | undefined {
+        for (const opener of INLINE_SHAPE_OPENERS) {
+            if (!rest.startsWith(opener.open)) continue;
+            const found = findBalancedClose(rest, opener);
+            if (found) return {label: found.label, shape: opener.shape, consumed: found.consumed};
+        }
+        return undefined;
+    }
+
+    function findBalancedClose(rest: string, opener: InlineShapeOpener):
+        { label: string; consumed: number } | undefined {
+        // Balance on the innermost bracket pair of the opener — this is the
+        // pair the user can legitimately nest in a label. e.g. for `[(...)]`
+        // (cylinder) we balance `(` / `)`; for `[...]` we balance `[` / `]`.
+        const innerOpen = opener.open[opener.open.length - 1]!;
+        const innerClose = opener.close[0]!;
+        const start = opener.open.length;
+        let depth = 1;
+        for (let i = start; i < rest.length; i++) {
+            const ch = rest[i]!;
+            if (ch === innerOpen) {
+                depth++;
+            } else if (ch === innerClose) {
+                depth--;
+                if (depth === 0) {
+                    // The full close string (e.g. ")]" for cylinder) must
+                    // follow; if it doesn't, this `)` is incidental — keep
+                    // scanning with depth restored.
+                    if (rest.slice(i, i + opener.close.length) === opener.close) {
+                        return {label: rest.slice(start, i), consumed: i + opener.close.length};
+                    }
+                    depth++;
+                }
+            }
+        }
+        return undefined;
     }
 
     // Diamond shapes inscribe text in their inner rhombus (half-width × half-

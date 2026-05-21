@@ -389,6 +389,57 @@ describe("golden: lr-branched-chain", () => {
     });
 });
 
+describe("golden: lr-multisource-bracketed-label", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-multisource-bracketed-label"); });
+
+    it("multi-source edge whose target label contains nested `[...]` is not dropped", () => {
+        // Regression: `LLM & P --> CA[create_agent(...middleware=[handle_tool_errors])]`.
+        // The chain-path parser's inline-shape regex matched the first inner
+        // `]` and rejected the trailing chars, so the whole line was dropped —
+        // CA node never created, LLM→CA and P→CA edges never created. With
+        // balanced-bracket parsing the target node and both predecessors land.
+        loaded.L.node("create_agent(").rightOf("get_model(data.get_version())");
+        loaded.L.node("create_agent(").rightOf("inject_agent_context");
+        loaded.L.edge({fromText: "get_model(data.get_version())", toText: "create_agent("});
+        loaded.L.edge({fromText: "inject_agent_context", toText: "create_agent("});
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
+describe("golden: lr-row-wrap-strike-through", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("lr-row-wrap-strike-through"); });
+
+    // Regression: a row-wrapped forward edge whose target is a Decision diamond
+    // (e.g. `S4 --> Par{"asyncio.gather"}` where Par sits at col 0 of the next
+    // row) was forced through the diamond's Left face by the Decision-input
+    // convention, which clobbered the Top face that the LR back-edge-gutter
+    // rule had set. The route then ran straight across the row, striking
+    // through every node in row 2.
+    it("S4 → asyncio.gather (visually-back row-wrap into a diamond) enters Top, not Left", () => {
+        loaded.L.edge({fromText: "LLM 4: Supervisor turn 2", toText: "asyncio.gather"})
+            .hasSourceAlignment(PortAlignment.Bottom)
+            .hasTargetAlignment(PortAlignment.Top);
+    });
+
+    it("S4 → asyncio.gather route does not strike through any row-2 node", () => {
+        loaded.L.edge({fromText: "LLM 4: Supervisor turn 2", toText: "asyncio.gather"})
+            .doesNotCross("add_messages (Postgres)", "SSE close", "LLM 5: Followup (Haiku)");
+    });
+
+    it("no edge passes through a non-endpoint node", () => {
+        loaded.L.edges().noNodeIntersection();
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: lr-cycle-with-back-edges", () => {
     let loaded: Loaded;
     beforeAll(async () => { loaded = await loadFixture("lr-cycle-with-back-edges"); });
@@ -716,6 +767,8 @@ describe("golden: fixture inventory", () => {
             "lr-user-bug-repro",
             "lr-cluster-no-internal-edges",
             "lr-branched-chain",
+            "lr-multisource-bracketed-label",
+            "lr-row-wrap-strike-through",
             "lr-cycle-with-back-edges",
             "lr-fork-linear-tail",
             "lr-back-edge-gutter",

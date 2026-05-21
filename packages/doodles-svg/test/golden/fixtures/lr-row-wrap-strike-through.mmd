@@ -1,0 +1,15 @@
+flowchart LR
+    Start(["POST /api/v2/chat"]) --> S1["search_agents<br/>(LLM 1: Condense, Haiku)"]
+    S1 --> Build["build_deep_agent"]
+    Build --> S2["LLM 2: Supervisor turn 1<br/>(Sonnet)"]
+    S2 --> AQT["QuestionAnswerTool"]
+    AQT --> AR["IDMDocumentsRetriever"]
+    AR --> AG["grade_documents (no LLM)"]
+    AG --> S3["LLM 3: cite_documents<br/>(Sonnet, NO cache)"]
+    S3 --> AF["finalize"]
+    AF --> S4["LLM 4: Supervisor turn 2<br/>(Sonnet)"]
+    S4 --> Par{"asyncio.gather"}
+    Par --> P1["add_messages (Postgres)"]
+    Par --> S5["LLM 5: Followup (Haiku)"]
+    S5 --> End(["SSE close"])
+    P1 --> End

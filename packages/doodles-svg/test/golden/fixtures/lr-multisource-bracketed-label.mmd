@@ -1,0 +1,5 @@
+flowchart LR
+    AT[AgentTool] --> A[Agent.model_validate]
+    A --> LLM[get_model(data.get_version())]
+    A --> P[inject_agent_context<br/>AGENT_TEMPLATE]
+    LLM & P --> CA[create_agent(<br/>model, tools, system_prompt,<br/>middleware=[handle_tool_errors])]
