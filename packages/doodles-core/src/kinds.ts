@@ -18,7 +18,8 @@ export type DiagramKind =
     | "pie"
     | "state"
     | "mindmap"
-    | "deployment";
+    | "deployment"
+    | "chart";
 
 export interface PortRules {
     /** Which sides of a node may host ports. */
@@ -31,7 +32,7 @@ export interface PortRules {
 
 export interface KindConstraints {
     /** Engine that lays this kind out. */
-    layoutAlgorithm: "filigree-layered" | "sequence" | "gantt-timeline" | "er" | "pie" | "mind-map-radial" | "state-fsm";
+    layoutAlgorithm: "filigree-layered" | "sequence" | "gantt-timeline" | "er" | "pie" | "mind-map-radial" | "state-fsm" | "chart-axes";
     /** Pass-through algorithm options (engine-specific). */
     layoutOptions?: Record<string, unknown>;
 
@@ -39,7 +40,7 @@ export interface KindConstraints {
     rendererId: string;
 
     /** How user gestures are constrained in the interactive editor. */
-    movementAxes: "free" | "horizontal-only" | "vertical-only" | "lane-constrained";
+    movementAxes: "free" | "horizontal-only" | "vertical-only" | "lane-constrained" | "none";
     portRules: PortRules;
     /** True when reordering siblings changes meaning (sequence: yes; flowchart: no). */
     nodeOrderingMatters: boolean;
@@ -60,8 +61,21 @@ const FLOWCHART_CONSTRAINTS: KindConstraints = {
     background: "none",
 };
 
+const CHART_CONSTRAINTS: KindConstraints = {
+    layoutAlgorithm: "chart-axes",
+    rendererId: "svg-chart",
+    movementAxes: "none",
+    portRules: {
+        sides: [],
+        edgePosRatioEditable: false,
+    },
+    nodeOrderingMatters: false,
+    background: "grid",
+};
+
 const KIND_REGISTRY: Partial<Record<DiagramKind, KindConstraints>> = {
     flowchart: FLOWCHART_CONSTRAINTS,
+    chart: CHART_CONSTRAINTS,
 };
 
 /**

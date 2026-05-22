@@ -1,6 +1,6 @@
 {
-  "name": "@benkalegin/doodles-svg",
-  "version": "0.3.12",
+  "name": "@benkalegin/doodles-vega",
+  "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -30,19 +30,15 @@
     "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
-    "@benkalegin/doodles-core": "workspace:*"
+    "@benkalegin/doodles-core": "workspace:*",
+    "nanoid": "^3.3.12"
   },
-  "devDependencies": {
-    "@benkalegin/doodles-layout": "workspace:*",
-    "@benkalegin/doodles-mermaid": "workspace:*",
-    "@benkalegin/doodles-vega": "workspace:*"
-  },
-  "description": "Renders a laid-out Doodle to SVG with theme tokens.",
+  "description": "Vega-Lite (subset) importer → Doodle ChartSpec.",
   "license": "MIT",
   "author": "Ben Kalegin",
   "repository": {
     "type": "git",
     "url": "https://github.com/BenKalegin/doodles.git",
-    "directory": "packages/doodles-svg"
+    "directory": "packages/doodles-vega"
   }
 }

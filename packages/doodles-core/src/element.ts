@@ -29,6 +29,7 @@ export enum ElementType {
     PieChartDiagram,
     Cluster,
     MindMapDiagram,
+    XyChartDiagram,
 }
 
 export interface ElementRef {

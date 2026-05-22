@@ -98,7 +98,7 @@ function readHeaderDirection(content: string): LayoutDirection | undefined {
     return undefined;
 }
 
-function readFrontmatterLines(content: string): string[] {
+export function readFrontmatterLines(content: string): string[] {
     const lines = content.split("\n").map(line => line.trim());
     if (lines[0] !== "---") return [];
     const closeIndex = lines.indexOf("---", 1);

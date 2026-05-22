@@ -68,6 +68,18 @@ importers:
       '@benkalegin/doodles-mermaid':
         specifier: workspace:*
         version: link:../doodles-mermaid
+      '@benkalegin/doodles-vega':
+        specifier: workspace:*
+        version: link:../doodles-vega
+
+  packages/doodles-vega:
+    dependencies:
+      '@benkalegin/doodles-core':
+        specifier: workspace:*
+        version: link:../doodles-core
+      nanoid:
+        specifier: ^3.3.12
+        version: 3.3.12
 
 packages:
 

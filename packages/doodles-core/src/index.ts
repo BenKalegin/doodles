@@ -125,4 +125,28 @@ export {
     type SequenceDiagramState,
 } from "./sequenceDiagramState.js";
 
+export {
+    type ChartSeriesId,
+    type ChartFieldName,
+    type ChartCellValue,
+    ChartMarkKind,
+    ChartScaleKind,
+    ChartFieldType,
+    ChartStackMode,
+    ChartOrientation,
+    ChartPointShape,
+    ChartInteractionTarget,
+    ChartInteractionEvent,
+    ChartSourceFormat,
+    type ChartAxis,
+    type ChartDataField,
+    type ChartData,
+    type ChartEncoding,
+    type ChartSeriesStyle,
+    type ChartSeries,
+    type ChartInteraction,
+    type ChartSource,
+    type ChartSpec,
+} from "./chartDiagramState.js";
+
 export const DOODLES_VERSION = "0.2.0";

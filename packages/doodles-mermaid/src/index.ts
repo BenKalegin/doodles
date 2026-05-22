@@ -4,6 +4,7 @@ export {
     normalizeMermaidDeclaration,
     mermaidSourceLines,
     parseMermaidLayoutHints,
+    readFrontmatterLines,
 } from "./mermaidImportUtils.js";
 
 export {
@@ -28,3 +29,5 @@ export {
 } from "./mermaidWithLayout.js";
 
 export {importMermaidSequenceDiagram} from "./mermaidSequenceImporter.js";
+
+export {importMermaidXyChartDiagram} from "./mermaidXyChartImporter.js";
