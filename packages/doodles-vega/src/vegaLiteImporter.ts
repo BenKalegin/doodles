@@ -109,6 +109,9 @@ export function importVegaLiteChart(spec: VegaSpec | string): ChartSpec {
     const xAxis = buildAxis(parsed.encoding.x, xScale);
     const yAxis = buildAxis(parsed.encoding.y, yScale);
 
+    const source: ChartSpec["source"] = typeof spec === "string"
+        ? {format: ChartSourceFormat.VegaLite, raw: spec}
+        : {format: ChartSourceFormat.VegaLite};
     const out: ChartSpec = {
         id: nanoid(),
         type: ElementType.XyChartDiagram,
@@ -119,13 +122,15 @@ export function importVegaLiteChart(spec: VegaSpec | string): ChartSpec {
         yAxis,
         data,
         series,
-        source: {format: ChartSourceFormat.VegaLite, raw: typeof spec === "string" ? spec : JSON.stringify(spec)},
+        source,
     };
     const title = readTitle(parsed);
     if (title !== undefined) out.title = title;
     if (interactions.length > 0) out.interactions = interactions;
     return out;
 }
+
+const UNSUPPORTED_COMPOSITIONS = ["layer", "hconcat", "vconcat", "repeat", "facet"] as const;
 
 function rejectUnsupported(spec: VegaSpec): void {
     if (spec.data?.url) throw new Error("vega-lite: data.url is not supported in v1 — inline data.values only");
@@ -137,7 +142,7 @@ function rejectUnsupported(spec: VegaSpec): void {
         throw new Error("vega-lite: encoding.timeUnit is not supported in v1");
     }
     const anySpec = spec as unknown as Record<string, unknown>;
-    for (const key of ["layer", "hconcat", "vconcat", "repeat", "facet"]) {
+    for (const key of UNSUPPORTED_COMPOSITIONS) {
         if (anySpec[key] !== undefined) throw new Error(`vega-lite: ${key} compositions are not supported in v1`);
     }
 }
@@ -201,7 +206,7 @@ function scaleFor(t: string | undefined): ChartAxis["scale"] {
 }
 
 function buildData(rows: Array<Record<string, ChartCellValue>>, fields: ChartDataField[]): ChartData {
-    const fieldNames = new Set(fields.map(f => f.name));
+    const fieldNames = fields.map(f => f.name);
     const projected = rows.map(row => {
         const out: Record<string, ChartCellValue> = {};
         for (const name of fieldNames) out[name] = row[name] ?? null;
@@ -210,12 +215,18 @@ function buildData(rows: Array<Record<string, ChartCellValue>>, fields: ChartDat
     return {fields, rows: projected};
 }
 
+const EXPLICIT_STACK_MAP: Record<"zero" | "normalize" | "center", ChartStackMode> = {
+    zero: ChartStackMode.Zero,
+    normalize: ChartStackMode.Normalize,
+    center: ChartStackMode.Center,
+};
+
 function resolveStack(mark: ChartSeries["mark"], explicit: VegaEncodingField["stack"], hasColorSplit: boolean): ChartSeries["stack"] | undefined {
     if (explicit === null || explicit === false) return undefined;
-    if (explicit === "zero") return ChartStackMode.Zero;
-    if (explicit === "normalize") return ChartStackMode.Normalize;
-    if (explicit === "center") return ChartStackMode.Center;
-    // Vega-Lite implicit: bar/area + categorical color split → stack: "zero"
+    if (typeof explicit === "string" && explicit in EXPLICIT_STACK_MAP) {
+        return EXPLICIT_STACK_MAP[explicit];
+    }
+    // Vega-Lite implicit: bar/area + categorical color split → stack: "zero".
     if ((mark === ChartMarkKind.Bar || mark === ChartMarkKind.Area) && hasColorSplit) return ChartStackMode.Zero;
     return undefined;
 }

@@ -218,7 +218,7 @@ function renderEdge(route: EdgeRoute, theme: ThemeTokens): string {
     return path + labelSvg;
 }
 
-function polylineToPathD(points: readonly Coordinate[]): string {
+export function polylineToPathD(points: readonly Coordinate[]): string {
     if (points.length === 0) return "";
     const head = points[0]!;
     const rest = points.slice(1).map(p => `L ${p.x} ${p.y}`).join(" ");

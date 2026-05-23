@@ -19,6 +19,7 @@ const TITLE_RE = /^title\s+(.+)$/i;
 const X_AXIS_RE = /^x-axis\s+(.+)$/i;
 const Y_AXIS_RE = /^y-axis\s+(.+)$/i;
 const SERIES_RE = /^(bar|line)\s+(.+)$/i;
+const BAR_KEYWORD = "bar";
 const RANGE_RE = /^(-?[\d.]+)\s*-->\s*(-?[\d.]+)$/;
 const QUOTED_LABEL_RE = /^"((?:[^"\\]|\\.)*)"(?:\s+(.+))?$/;
 // Matches both YAML-style (`plotColorPalette: "#a, #b"`) and JSON-style
@@ -116,7 +117,8 @@ function parseDirectives(rest: string[], horizontal: boolean): ParseResult {
         }
         const seriesMatch = line.match(SERIES_RE);
         if (seriesMatch) {
-            result.seriesList.push(parseSeriesRhs(seriesMatch[1]!.toLowerCase() === "bar" ? ChartMarkKind.Bar : ChartMarkKind.Line, seriesMatch[2]!));
+            const mark = seriesMatch[1]!.toLowerCase() === BAR_KEYWORD ? ChartMarkKind.Bar : ChartMarkKind.Line;
+            result.seriesList.push(parseSeriesRhs(mark, seriesMatch[2]!));
             continue;
         }
         const inlineSeriesMatch = line.match(/^(bar|line)\s*$/i);
@@ -142,11 +144,9 @@ function parseAxisRhs(rhs: string): ParsedAxis {
     }
     if (remainder.startsWith("[") && remainder.endsWith("]")) {
         const inside = remainder.slice(1, -1).trim();
-        // Categories may be quoted or bare tokens, comma-separated.
         const categories = splitTopLevelCommas(inside).map(unquote);
         return withLabel({categories}, label);
     }
-    // Bare unquoted label only (no axis values declared).
     if (!label) return {label: remainder};
     throw new Error(`xychart: cannot parse axis "${rhs}"`);
 }
@@ -263,11 +263,9 @@ function buildSeries(parsed: ParsedSeries[], palette: string[], idGen: () => str
 }
 
 function readPlotColorPalette(source: string): string[] {
-    // Scan frontmatter first (the doodles-native location), then the whole
-    // source so that mermaid's canonical `%%{init: {"themeVariables": …}}%%`
-    // directive style is honored too.
-    const fmLines = readFrontmatterLines(source);
-    for (const line of fmLines) {
+    // Frontmatter takes precedence over `%%{init: …}%%` so doodles-native
+    // configuration wins when both are present.
+    for (const line of readFrontmatterLines(source)) {
         const palette = matchPalette(line);
         if (palette) return palette;
     }

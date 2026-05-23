@@ -1,15 +1,16 @@
 import {
     type ChartCellValue,
-    type ChartData,
     type ChartInteraction,
     type ChartSeries,
     type ChartSpec,
+    type Coordinate,
     ChartMarkKind,
     ChartScaleKind,
     ChartStackMode,
 } from "@benkalegin/doodles-core";
 import {defaultLightTheme, type ThemeTokens} from "./theme.js";
 import {xmlEscape} from "./escape.js";
+import {polylineToPathD} from "./index.js";
 
 export interface ChartRenderOptions {
     theme?: ThemeTokens;
@@ -46,6 +47,10 @@ const RULE_STROKE_WIDTH = 1;
 const GRID_STROKE_WIDTH = 0.5;
 const GRID_OPACITY = 0.18;
 const AXIS_LINE_OPACITY = 0.6;
+const DEGENERATE_DOMAIN_PAD = 1;
+const TICK_DECIMAL_DIGITS = 2;
+const FALLBACK_EXTENT_MIN = 0;
+const FALLBACK_EXTENT_MAX = 1;
 
 // Tableau-10-ish palette — picked so successive series stay distinguishable on
 // both light and dark hosts. Override via ChartRenderOptions.palette.
@@ -53,6 +58,18 @@ const DEFAULT_PALETTE = [
     "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2",
     "#EECA3B", "#B279A2", "#FF9DA6", "#9D755D", "#BAB0AC",
 ];
+
+const AxisSide = {
+    X: "x",
+    Y: "y",
+} as const;
+type AxisSide = (typeof AxisSide)[keyof typeof AxisSide];
+
+const AxisKind = {
+    Categorical: "categorical",
+    Linear: "linear",
+} as const;
+type AxisKind = (typeof AxisKind)[keyof typeof AxisKind];
 
 interface Rect {
     x: number;
@@ -63,12 +80,39 @@ interface Rect {
 
 type ScaleFn = (value: ChartCellValue) => number;
 
-interface ChartScales {
-    xScale: ScaleFn;
-    yScale: ScaleFn;
-    /** Pixel width per category band — defined only when the axis is categorical. */
-    xBandWidth?: number;
-    yBandWidth?: number;
+interface AxisTick {
+    position: number;
+    label: string;
+}
+
+interface BaseAxis {
+    side: AxisSide;
+    scale: ScaleFn;
+    ticks: AxisTick[];
+    field?: string;
+}
+
+interface CategoricalAxis extends BaseAxis {
+    kind: typeof AxisKind.Categorical;
+    categories: string[];
+    bandWidth: number;
+}
+
+interface LinearAxis extends BaseAxis {
+    kind: typeof AxisKind.Linear;
+    domain: [number, number];
+}
+
+type ResolvedAxis = CategoricalAxis | LinearAxis;
+
+interface ChartLayout {
+    plot: Rect;
+    xAxis: ResolvedAxis;
+    yAxis: ResolvedAxis;
+    /** Present when exactly one axis is categorical (bar/area/rule modes). */
+    categoryAxis?: CategoricalAxis;
+    /** The numeric axis values measure against; defaults to y in scatter mode. */
+    valueAxis?: LinearAxis;
 }
 
 /**
@@ -83,26 +127,59 @@ export function renderChartSvg(spec: ChartSpec, options: ChartRenderOptions = {}
     const padding = options.padding ?? DEFAULT_PADDING;
     const palette = options.palette ?? DEFAULT_PALETTE;
 
-    const width = spec.display.width;
-    const height = spec.display.height;
-    const plotRect = computePlotRect(width, height, spec.title);
-    const scales = buildScales(spec, plotRect);
+    const layout = computeLayout(spec);
 
     const layers: string[] = [];
-    layers.push(renderGrid(spec, plotRect, scales, theme));
-    layers.push(renderAxes(spec, plotRect, scales, theme));
-    layers.push(...renderAllSeries(spec, plotRect, scales, palette));
-    if (spec.title) layers.push(renderTitle(spec.title, width, theme));
+    layers.push(renderGrid(spec, layout, theme));
+    layers.push(renderAxes(spec, layout, theme));
+    layers.push(...renderAllSeries(spec, layout, palette));
+    if (spec.title) layers.push(renderTitle(spec.title, spec.display.width, theme));
 
-    const viewBox = `${-padding} ${-padding} ${width + padding * 2} ${height + padding * 2}`;
+    const {width, height} = spec.display;
+    const outerWidth = width + padding * 2;
+    const outerHeight = height + padding * 2;
+    const viewBox = `${-padding} ${-padding} ${outerWidth} ${outerHeight}`;
     const background = theme.colors.background !== "transparent"
-        ? `<rect x="${-padding}" y="${-padding}" width="${width + padding * 2}" height="${height + padding * 2}" fill="${theme.colors.background}" />`
+        ? `<rect x="${-padding}" y="${-padding}" width="${outerWidth}" height="${outerHeight}" fill="${theme.colors.background}" />`
         : "";
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" class="doodles-svg doodles-svg-chart" viewBox="${viewBox}" width="${width + padding * 2}" height="${height + padding * 2}">${background}${layers.join("")}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="doodles-svg doodles-svg-chart" viewBox="${viewBox}" width="${outerWidth}" height="${outerHeight}">${background}${layers.join("")}</svg>`;
 }
 
 // ── Layout ──────────────────────────────────────────────────────────────────
+
+function computeLayout(spec: ChartSpec): ChartLayout {
+    const plot = computePlotRect(spec.display.width, spec.display.height, spec.title);
+    const xField = spec.series[0]?.encoding.x;
+    const yField = spec.series[0]?.encoding.y;
+
+    const xCategorical = spec.xAxis.scale === ChartScaleKind.Categorical;
+    const yCategorical = spec.yAxis.scale === ChartScaleKind.Categorical;
+
+    const xAxis = resolveAxis(spec, AxisSide.X, xField, xCategorical, plot.x, plot.x + plot.width);
+    const yAxis = resolveAxis(spec, AxisSide.Y, yField, yCategorical, plot.y + plot.height, plot.y);
+
+    const categoryAxis = pickCategoryAxis(xAxis, yAxis);
+    const valueAxis = pickValueAxis(xAxis, yAxis);
+
+    const layout: ChartLayout = {plot, xAxis, yAxis};
+    if (categoryAxis) layout.categoryAxis = categoryAxis;
+    if (valueAxis) layout.valueAxis = valueAxis;
+    return layout;
+}
+
+function pickCategoryAxis(xAxis: ResolvedAxis, yAxis: ResolvedAxis): CategoricalAxis | undefined {
+    if (xAxis.kind === AxisKind.Categorical) return xAxis;
+    if (yAxis.kind === AxisKind.Categorical) return yAxis;
+    return undefined;
+}
+
+// In scatter mode (both linear) the y-axis carries values by convention.
+function pickValueAxis(xAxis: ResolvedAxis, yAxis: ResolvedAxis): LinearAxis | undefined {
+    if (yAxis.kind === AxisKind.Linear) return yAxis;
+    if (xAxis.kind === AxisKind.Linear) return xAxis;
+    return undefined;
+}
 
 function computePlotRect(width: number, height: number, title: string | undefined): Rect {
     const top = title ? PLOT_MARGIN_TOP_WITH_TITLE : PLOT_MARGIN_TOP_NO_TITLE;
@@ -114,27 +191,31 @@ function computePlotRect(width: number, height: number, title: string | undefine
     };
 }
 
-// ── Scales ──────────────────────────────────────────────────────────────────
-
-function buildScales(spec: ChartSpec, plot: Rect): ChartScales {
-    const xCategorical = spec.xAxis.scale === ChartScaleKind.Categorical;
-    const yCategorical = spec.yAxis.scale === ChartScaleKind.Categorical;
-
-    const xField = spec.series[0]?.encoding.x;
-    const yField = spec.series[0]?.encoding.y;
-
-    const xResult = xCategorical
-        ? buildBandScale(collectCategoryDomain(spec, "x", xField), plot.x, plot.x + plot.width)
-        : {scale: buildLinearScale(numericDomain(spec, "x", xField), plot.x, plot.x + plot.width), bandWidth: undefined};
-    const yResult = yCategorical
-        ? buildBandScale(collectCategoryDomain(spec, "y", yField), plot.y + plot.height, plot.y)
-        : {scale: buildLinearScale(numericDomain(spec, "y", yField), plot.y + plot.height, plot.y), bandWidth: undefined};
-
-    const out: ChartScales = {xScale: xResult.scale, yScale: yResult.scale};
-    if (xResult.bandWidth !== undefined) out.xBandWidth = xResult.bandWidth;
-    if (yResult.bandWidth !== undefined) out.yBandWidth = yResult.bandWidth;
-    return out;
+function resolveAxis(
+    spec: ChartSpec,
+    side: AxisSide,
+    field: string | undefined,
+    categorical: boolean,
+    rangeStart: number,
+    rangeEnd: number,
+): ResolvedAxis {
+    if (categorical) {
+        const categories = collectCategoryDomain(spec, side, field);
+        const {scale, bandWidth} = buildBandScale(categories, rangeStart, rangeEnd);
+        const ticks: AxisTick[] = categories.map(c => ({position: scale(c), label: c}));
+        const axis: CategoricalAxis = {kind: AxisKind.Categorical, side, scale, ticks, categories, bandWidth};
+        if (field !== undefined) axis.field = field;
+        return axis;
+    }
+    const domain = computeAxisExtent(spec, side);
+    const scale = buildLinearScale(domain, rangeStart, rangeEnd);
+    const ticks = linearAxisTicks(domain, scale);
+    const axis: LinearAxis = {kind: AxisKind.Linear, side, scale, ticks, domain};
+    if (field !== undefined) axis.field = field;
+    return axis;
 }
+
+// ── Scales ──────────────────────────────────────────────────────────────────
 
 function buildBandScale(domain: string[], rangeStart: number, rangeEnd: number): {scale: ScaleFn; bandWidth: number} {
     const totalSpan = rangeEnd - rangeStart;
@@ -146,8 +227,7 @@ function buildBandScale(domain: string[], rangeStart: number, rangeEnd: number):
     domain.forEach((cat, i) => index.set(cat, i));
     const scale: ScaleFn = (raw) => {
         if (raw === null || raw === undefined) return Number.NaN;
-        const key = String(raw);
-        const i = index.get(key);
+        const i = index.get(String(raw));
         if (i === undefined) return Number.NaN;
         return start + stride * i + stride / 2;
     };
@@ -166,8 +246,8 @@ function buildLinearScale(domain: [number, number], rangeStart: number, rangeEnd
     };
 }
 
-function collectCategoryDomain(spec: ChartSpec, axis: "x" | "y", field: string | undefined): string[] {
-    const declared = (axis === "x" ? spec.xAxis.domain : spec.yAxis.domain);
+function collectCategoryDomain(spec: ChartSpec, side: AxisSide, field: string | undefined): string[] {
+    const declared = (side === AxisSide.X ? spec.xAxis.domain : spec.yAxis.domain);
     if (Array.isArray(declared) && declared.every(v => typeof v === "string")) return declared as string[];
     if (!field) return [];
     const seen = new Set<string>();
@@ -183,185 +263,176 @@ function collectCategoryDomain(spec: ChartSpec, axis: "x" | "y", field: string |
     return out;
 }
 
-function numericDomain(spec: ChartSpec, axis: "x" | "y", field: string | undefined): [number, number] {
-    const declared = (axis === "x" ? spec.xAxis.domain : spec.yAxis.domain);
-    if (Array.isArray(declared) && declared.length === 2 && declared.every(v => typeof v === "number")) {
-        return declared as [number, number];
-    }
+/**
+ * Single-pass extent computation for a numeric axis. Walks each row once,
+ * accumulating both individual series min/max and per-category stacked totals
+ * (when stacking applies — i.e. the OTHER axis is categorical). Old code
+ * iterated rows (1 + series.length) times; this is a single sweep.
+ */
+function computeAxisExtent(spec: ChartSpec, side: AxisSide): [number, number] {
+    const declared = (side === AxisSide.X ? spec.xAxis.domain : spec.yAxis.domain);
     const declaredMin = Array.isArray(declared) && typeof declared[0] === "number" ? declared[0] : undefined;
     const declaredMax = Array.isArray(declared) && typeof declared[1] === "number" ? declared[1] : undefined;
-    const {min, max} = extentOverSeriesAndStacks(spec, axis, field);
-    const finalMin = declaredMin ?? Math.min(0, min);
-    const finalMax = declaredMax ?? Math.max(0, max);
-    return finalMin === finalMax ? [finalMin - 1, finalMax + 1] : [finalMin, finalMax];
-}
+    if (declaredMin !== undefined && declaredMax !== undefined) return [declaredMin, declaredMax];
 
-function extentOverSeriesAndStacks(spec: ChartSpec, axis: "x" | "y", field: string | undefined): {min: number; max: number} {
+    const otherSide: AxisSide = side === AxisSide.X ? AxisSide.Y : AxisSide.X;
+    const otherCategorical = (otherSide === AxisSide.X ? spec.xAxis.scale : spec.yAxis.scale) === ChartScaleKind.Categorical;
+
+    const stackedTotals = new Map<string, number>();
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
-    if (!field) return {min: 0, max: 1};
-    // When any series stacks, the value-axis extent must include the per-category stacked totals.
-    const stackedSums = computeStackedSums(spec, axis);
-    if (stackedSums) {
-        for (const v of stackedSums.values()) {
+
+    for (const row of spec.data.rows) {
+        for (const series of spec.series) {
+            const v = row[fieldFor(series, side)];
+            if (typeof v !== "number" || !Number.isFinite(v)) continue;
             if (v < min) min = v;
             if (v > max) max = v;
+            if (!otherCategorical || series.stack !== ChartStackMode.Zero) continue;
+            const cat = row[fieldFor(series, otherSide)];
+            if (cat === null || cat === undefined) continue;
+            const key = String(cat);
+            stackedTotals.set(key, (stackedTotals.get(key) ?? 0) + v);
         }
     }
-    for (const series of spec.series) {
-        const seriesField = (axis === "x" ? series.encoding.x : series.encoding.y);
-        for (const row of spec.data.rows) {
-            const raw = row[seriesField];
-            if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
-            if (raw < min) min = raw;
-            if (raw > max) max = raw;
-        }
+    for (const total of stackedTotals.values()) {
+        if (total < min) min = total;
+        if (total > max) max = total;
     }
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return {min: 0, max: 1};
-    return {min, max};
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        min = FALLBACK_EXTENT_MIN;
+        max = FALLBACK_EXTENT_MAX;
+    }
+    const finalMin = declaredMin ?? Math.min(0, min);
+    const finalMax = declaredMax ?? Math.max(0, max);
+    if (finalMin === finalMax) return [finalMin - DEGENERATE_DOMAIN_PAD, finalMax + DEGENERATE_DOMAIN_PAD];
+    return [finalMin, finalMax];
 }
 
-function computeStackedSums(spec: ChartSpec, valueAxis: "x" | "y"): Map<string, number> | undefined {
-    const stacked = spec.series.filter(s => s.stack === ChartStackMode.Zero);
-    if (stacked.length === 0) return undefined;
-    const sums = new Map<string, number>();
-    const categoryAxis: "x" | "y" = valueAxis === "x" ? "y" : "x";
-    for (const series of stacked) {
-        const catField = categoryAxis === "x" ? series.encoding.x : series.encoding.y;
-        const valField = valueAxis === "x" ? series.encoding.x : series.encoding.y;
-        for (const row of spec.data.rows) {
-            const cat = row[catField];
-            const val = row[valField];
-            if (typeof val !== "number" || cat === null || cat === undefined) continue;
-            const key = String(cat);
-            sums.set(key, (sums.get(key) ?? 0) + val);
-        }
-    }
-    return sums;
+function fieldFor(series: ChartSeries, side: AxisSide): string {
+    return side === AxisSide.X ? series.encoding.x : series.encoding.y;
+}
+
+function linearAxisTicks(domain: [number, number], scale: ScaleFn): AxisTick[] {
+    const [d0, d1] = domain;
+    const step = (d1 - d0) / (DEFAULT_LINEAR_TICK_COUNT - 1);
+    return Array.from({length: DEFAULT_LINEAR_TICK_COUNT}, (_, i) => {
+        const v = d0 + step * i;
+        return {position: scale(v), label: formatNumber(v)};
+    });
 }
 
 // ── Series rendering ────────────────────────────────────────────────────────
 
-function renderAllSeries(spec: ChartSpec, plot: Rect, scales: ChartScales, palette: string[]): string[] {
+function renderAllSeries(spec: ChartSpec, layout: ChartLayout, palette: string[]): string[] {
     const stackState = new Map<string, number>();
-    const layers: string[] = [];
-    spec.series.forEach((series, index) => {
+    return spec.series.map((series, index) => {
         const color = resolveColor(series, palette, index);
-        layers.push(renderSeries(spec, series, plot, scales, color, stackState));
+        return renderSeries(spec, series, layout, color, stackState);
     });
-    return layers;
 }
 
 function resolveColor(series: ChartSeries, palette: string[], index: number): string {
-    const explicit = series.style?.color;
-    if (explicit) return explicit;
-    return palette[index % palette.length]!;
+    return series.style?.color ?? palette[index % palette.length]!;
 }
 
-function renderSeries(spec: ChartSpec, series: ChartSeries, plot: Rect, scales: ChartScales, color: string, stackState: Map<string, number>): string {
+function renderSeries(spec: ChartSpec, series: ChartSeries, layout: ChartLayout, color: string, stackState: Map<string, number>): string {
     switch (series.mark) {
         case ChartMarkKind.Bar:
-            return renderBars(spec, series, scales, color, stackState);
+            return renderBars(spec, series, layout, color, stackState);
         case ChartMarkKind.Line:
-            return renderLine(spec, series, scales, color);
+            return renderLine(spec, series, layout, color);
         case ChartMarkKind.Area:
-            return renderArea(spec, series, scales, color);
+            return renderArea(spec, series, layout, color);
         case ChartMarkKind.Point:
-            return renderPoints(spec, series, scales, color);
+            return renderPoints(spec, series, layout, color);
         case ChartMarkKind.Rule:
-            return renderRule(spec, series, plot, scales, color);
+            return renderRule(spec, series, layout, color);
     }
 }
 
-function valueAxisOf(scales: ChartScales): "x" | "y" {
-    // The categorical axis has a defined bandWidth; the value axis does not.
-    return scales.yBandWidth === undefined ? "y" : "x";
-}
-
-function renderBars(spec: ChartSpec, series: ChartSeries, scales: ChartScales, color: string, stackState: Map<string, number>): string {
-    const valueAxis = valueAxisOf(scales);
-    const categoryAxis: "x" | "y" = valueAxis === "x" ? "y" : "x";
-    const catField = categoryAxis === "x" ? series.encoding.x : series.encoding.y;
-    const valField = valueAxis === "x" ? series.encoding.x : series.encoding.y;
-    const bandWidth = (categoryAxis === "x" ? scales.xBandWidth : scales.yBandWidth) ?? 0;
-    const valueScale = valueAxis === "x" ? scales.xScale : scales.yScale;
-    const categoryScale = categoryAxis === "x" ? scales.xScale : scales.yScale;
+function renderBars(spec: ChartSpec, series: ChartSeries, layout: ChartLayout, color: string, stackState: Map<string, number>): string {
+    const {categoryAxis, valueAxis} = layout;
+    if (!categoryAxis || !valueAxis) return ""; // bars require one categorical + one linear axis
+    const catField = fieldFor(series, categoryAxis.side);
+    const valField = fieldFor(series, valueAxis.side);
     const interactionAttrs = interactionAttrsFor(spec, series);
+    const stacked = series.stack === ChartStackMode.Zero;
 
     const cells = spec.data.rows.map(row => {
         const catRaw = row[catField];
         const valRaw = row[valField];
         if (catRaw === null || catRaw === undefined || typeof valRaw !== "number") return "";
-        const centerPx = categoryScale(catRaw);
+        const centerPx = categoryAxis.scale(catRaw);
         if (!Number.isFinite(centerPx)) return "";
         const key = String(catRaw);
-        const offset = series.stack === ChartStackMode.Zero ? (stackState.get(key) ?? 0) : 0;
-        if (series.stack === ChartStackMode.Zero) stackState.set(key, offset + valRaw);
-        const startPx = valueScale(offset);
-        const endPx = valueScale(offset + valRaw);
-        return barRectSvg(categoryAxis, centerPx, bandWidth, startPx, endPx, color, interactionAttrs);
+        const offset = stacked ? (stackState.get(key) ?? 0) : 0;
+        if (stacked) stackState.set(key, offset + valRaw);
+        const startPx = valueAxis.scale(offset);
+        const endPx = valueAxis.scale(offset + valRaw);
+        return barRectSvg(categoryAxis.side, centerPx, categoryAxis.bandWidth, startPx, endPx, color, interactionAttrs);
     });
     return groupFor(series, cells.join(""));
 }
 
-function barRectSvg(categoryAxis: "x" | "y", centerPx: number, bandWidth: number, startPx: number, endPx: number, color: string, interactionAttrs: string): string {
-    if (categoryAxis === "x") {
-        const x = centerPx - bandWidth / 2;
-        const yTop = Math.min(startPx, endPx);
-        const h = Math.abs(endPx - startPx);
-        return `<rect x="${x}" y="${yTop}" width="${bandWidth}" height="${h}" fill="${color}" stroke="${color}" stroke-width="${BAR_STROKE_WIDTH}"${interactionAttrs} />`;
-    }
-    const y = centerPx - bandWidth / 2;
-    const xLeft = Math.min(startPx, endPx);
-    const w = Math.abs(endPx - startPx);
-    return `<rect x="${xLeft}" y="${y}" width="${w}" height="${bandWidth}" fill="${color}" stroke="${color}" stroke-width="${BAR_STROKE_WIDTH}"${interactionAttrs} />`;
+function barRectSvg(categorySide: AxisSide, centerPx: number, bandWidth: number, startPx: number, endPx: number, color: string, interactionAttrs: string): string {
+    const isVertical = categorySide === AxisSide.X;
+    const x = isVertical ? centerPx - bandWidth / 2 : Math.min(startPx, endPx);
+    const y = isVertical ? Math.min(startPx, endPx) : centerPx - bandWidth / 2;
+    const width = isVertical ? bandWidth : Math.abs(endPx - startPx);
+    const height = isVertical ? Math.abs(endPx - startPx) : bandWidth;
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${color}" stroke="${color}" stroke-width="${BAR_STROKE_WIDTH}"${interactionAttrs} />`;
 }
 
-function renderLine(spec: ChartSpec, series: ChartSeries, scales: ChartScales, color: string): string {
-    const points = collectPoints(spec.data, series, scales);
+function renderLine(spec: ChartSpec, series: ChartSeries, layout: ChartLayout, color: string): string {
+    const points = collectPoints(spec, series, layout);
     if (points.length === 0) return "";
-    const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
     const interactionAttrs = interactionAttrsFor(spec, series);
-    return groupFor(series, `<path d="${path}" fill="none" stroke="${color}" stroke-width="${LINE_STROKE_WIDTH}"${interactionAttrs} />`);
+    return groupFor(series, `<path d="${polylineToPathD(points)}" fill="none" stroke="${color}" stroke-width="${LINE_STROKE_WIDTH}"${interactionAttrs} />`);
 }
 
-function renderArea(spec: ChartSpec, series: ChartSeries, scales: ChartScales, color: string): string {
-    const points = collectPoints(spec.data, series, scales);
+function renderArea(spec: ChartSpec, series: ChartSeries, layout: ChartLayout, color: string): string {
+    const points = collectPoints(spec, series, layout);
     if (points.length === 0) return "";
-    const valueAxis = valueAxisOf(scales);
-    const valueScale = valueAxis === "x" ? scales.xScale : scales.yScale;
-    const baseline = valueScale(0);
-    const top = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
-    const close = valueAxis === "y"
-        ? `L ${points[points.length - 1]!.x} ${baseline} L ${points[0]!.x} ${baseline} Z`
-        : `L ${baseline} ${points[points.length - 1]!.y} L ${baseline} ${points[0]!.y} Z`;
+    const {valueAxis} = layout;
+    if (!valueAxis) return ""; // area needs a value axis to anchor the baseline
+    const baseline = valueAxis.scale(0);
+    const top = polylineToPathD(points);
+    const last = points[points.length - 1]!;
+    const first = points[0]!;
+    const close = valueAxis.side === AxisSide.Y
+        ? `L ${last.x} ${baseline} L ${first.x} ${baseline} Z`
+        : `L ${baseline} ${last.y} L ${baseline} ${first.y} Z`;
     const interactionAttrs = interactionAttrsFor(spec, series);
     return groupFor(series, `<path d="${top} ${close}" fill="${color}" fill-opacity="${AREA_FILL_OPACITY}" stroke="${color}" stroke-width="${LINE_STROKE_WIDTH}"${interactionAttrs} />`);
 }
 
-function renderPoints(spec: ChartSpec, series: ChartSeries, scales: ChartScales, color: string): string {
-    const points = collectPoints(spec.data, series, scales);
+function renderPoints(spec: ChartSpec, series: ChartSeries, layout: ChartLayout, color: string): string {
+    const points = collectPoints(spec, series, layout);
     const interactionAttrs = interactionAttrsFor(spec, series);
     const dots = points.map(p => `<circle cx="${p.x}" cy="${p.y}" r="${POINT_RADIUS}" fill="${color}"${interactionAttrs} />`).join("");
     return groupFor(series, dots);
 }
 
-function renderRule(spec: ChartSpec, series: ChartSeries, plot: Rect, scales: ChartScales, color: string): string {
-    const points = collectPoints(spec.data, series, scales);
-    const valueAxis = valueAxisOf(scales);
+function renderRule(spec: ChartSpec, series: ChartSeries, layout: ChartLayout, color: string): string {
+    const points = collectPoints(spec, series, layout);
+    if (points.length === 0) return "";
     const interactionAttrs = interactionAttrsFor(spec, series);
-    const lines = points.map(p => valueAxis === "y"
+    const {plot, valueAxis} = layout;
+    const horizontal = (valueAxis?.side ?? AxisSide.Y) === AxisSide.Y;
+    const lines = points.map(p => horizontal
         ? `<line x1="${plot.x}" y1="${p.y}" x2="${plot.x + plot.width}" y2="${p.y}" stroke="${color}" stroke-width="${RULE_STROKE_WIDTH}"${interactionAttrs} />`
         : `<line x1="${p.x}" y1="${plot.y}" x2="${p.x}" y2="${plot.y + plot.height}" stroke="${color}" stroke-width="${RULE_STROKE_WIDTH}"${interactionAttrs} />`
     ).join("");
     return groupFor(series, lines);
 }
 
-function collectPoints(data: ChartData, series: ChartSeries, scales: ChartScales): Array<{x: number; y: number}> {
-    const out: Array<{x: number; y: number}> = [];
-    for (const row of data.rows) {
-        const x = scales.xScale(row[series.encoding.x] ?? null);
-        const y = scales.yScale(row[series.encoding.y] ?? null);
+function collectPoints(spec: ChartSpec, series: ChartSeries, layout: ChartLayout): Coordinate[] {
+    const {xAxis, yAxis} = layout;
+    const out: Coordinate[] = [];
+    for (const row of spec.data.rows) {
+        const x = xAxis.scale(row[series.encoding.x] ?? null);
+        const y = yAxis.scale(row[series.encoding.y] ?? null);
         if (Number.isFinite(x) && Number.isFinite(y)) out.push({x, y});
     }
     return out;
@@ -374,61 +445,35 @@ function groupFor(series: ChartSeries, content: string): string {
 function interactionAttrsFor(spec: ChartSpec, series: ChartSeries): string {
     const matching = (spec.interactions ?? []).filter((i: ChartInteraction) => i.seriesId === undefined || i.seriesId === series.id);
     if (matching.length === 0) return "";
-    return matching
-        .map(i => ` data-doodles-${i.event}="${xmlEscape(i.handler)}"`)
-        .join("");
+    return matching.map(i => ` data-doodles-${i.event}="${xmlEscape(i.handler)}"`).join("");
 }
 
 // ── Axes ────────────────────────────────────────────────────────────────────
 
-function renderAxes(spec: ChartSpec, plot: Rect, scales: ChartScales, theme: ThemeTokens): string {
-    return renderXAxis(spec, plot, scales, theme) + renderYAxis(spec, plot, scales, theme);
+function renderAxes(spec: ChartSpec, layout: ChartLayout, theme: ThemeTokens): string {
+    return renderXAxisLine(spec, layout, theme) + renderYAxisLine(spec, layout, theme);
 }
 
-function renderXAxis(spec: ChartSpec, plot: Rect, scales: ChartScales, theme: ThemeTokens): string {
+function renderXAxisLine(spec: ChartSpec, layout: ChartLayout, theme: ThemeTokens): string {
+    const {plot, xAxis} = layout;
     const axisY = plot.y + plot.height;
     const line = `<line x1="${plot.x}" y1="${axisY}" x2="${plot.x + plot.width}" y2="${axisY}" stroke="${theme.colors.edgeStroke}" stroke-width="1" opacity="${AXIS_LINE_OPACITY}" />`;
-    const ticks = axisTicks(spec.xAxis, scales.xScale, spec.xAxis.scale === ChartScaleKind.Categorical
-        ? collectCategoryDomain(spec, "x", spec.series[0]?.encoding.x)
-        : undefined);
-    const tickSvg = ticks.map(t => xTickSvg(t.position, t.label, axisY, theme)).join("");
+    const tickSvg = xAxis.ticks.map(t => xTickSvg(t.position, t.label, axisY, theme)).join("");
     const label = spec.xAxis.label
         ? `<text x="${plot.x + plot.width / 2}" y="${axisY + X_AXIS_LABEL_OFFSET}" text-anchor="middle" dominant-baseline="hanging" font-family="${xmlEscape(theme.font.family)}" font-size="${theme.font.size}" fill="${theme.colors.nodeText}">${xmlEscape(spec.xAxis.label)}</text>`
         : "";
     return line + tickSvg + label;
 }
 
-function renderYAxis(spec: ChartSpec, plot: Rect, scales: ChartScales, theme: ThemeTokens): string {
+function renderYAxisLine(spec: ChartSpec, layout: ChartLayout, theme: ThemeTokens): string {
+    const {plot, yAxis} = layout;
     const axisX = plot.x;
     const line = `<line x1="${axisX}" y1="${plot.y}" x2="${axisX}" y2="${plot.y + plot.height}" stroke="${theme.colors.edgeStroke}" stroke-width="1" opacity="${AXIS_LINE_OPACITY}" />`;
-    const ticks = axisTicks(spec.yAxis, scales.yScale, spec.yAxis.scale === ChartScaleKind.Categorical
-        ? collectCategoryDomain(spec, "y", spec.series[0]?.encoding.y)
-        : undefined);
-    const tickSvg = ticks.map(t => yTickSvg(t.position, t.label, axisX, theme)).join("");
+    const tickSvg = yAxis.ticks.map(t => yTickSvg(t.position, t.label, axisX, theme)).join("");
     const label = spec.yAxis.label
         ? `<text x="${axisX - Y_AXIS_LABEL_OFFSET}" y="${plot.y + plot.height / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${axisX - Y_AXIS_LABEL_OFFSET} ${plot.y + plot.height / 2})" font-family="${xmlEscape(theme.font.family)}" font-size="${theme.font.size}" fill="${theme.colors.nodeText}">${xmlEscape(spec.yAxis.label)}</text>`
         : "";
     return line + tickSvg + label;
-}
-
-interface AxisTick {
-    position: number;
-    label: string;
-}
-
-function axisTicks(axis: ChartSpec["xAxis"], scale: ScaleFn, categories: string[] | undefined): AxisTick[] {
-    if (axis.scale === ChartScaleKind.Categorical && categories) {
-        return categories.map(c => ({position: scale(c), label: c}));
-    }
-    if (Array.isArray(axis.domain) && axis.domain.length === 2 && typeof axis.domain[0] === "number" && typeof axis.domain[1] === "number") {
-        const [d0, d1] = axis.domain as [number, number];
-        const step = (d1 - d0) / (DEFAULT_LINEAR_TICK_COUNT - 1);
-        return Array.from({length: DEFAULT_LINEAR_TICK_COUNT}, (_, i) => {
-            const v = d0 + step * i;
-            return {position: scale(v), label: formatNumber(v)};
-        });
-    }
-    return [];
 }
 
 function xTickSvg(position: number, label: string, axisY: number, theme: ThemeTokens): string {
@@ -445,30 +490,26 @@ function yTickSvg(position: number, label: string, axisX: number, theme: ThemeTo
 
 function formatNumber(n: number): string {
     if (Number.isInteger(n)) return String(n);
-    return Number(n.toFixed(2)).toString();
+    return Number(n.toFixed(TICK_DECIMAL_DIGITS)).toString();
 }
 
 // ── Grid ────────────────────────────────────────────────────────────────────
 
-function renderGrid(spec: ChartSpec, plot: Rect, scales: ChartScales, theme: ThemeTokens): string {
+function renderGrid(spec: ChartSpec, layout: ChartLayout, theme: ThemeTokens): string {
     const parts: string[] = [];
-    if (spec.xAxis.grid) parts.push(verticalGridLines(spec, plot, scales, theme));
-    if (spec.yAxis.grid) parts.push(horizontalGridLines(spec, plot, scales, theme));
+    if (spec.xAxis.grid) parts.push(verticalGridLines(layout, theme));
+    if (spec.yAxis.grid) parts.push(horizontalGridLines(layout, theme));
     return parts.join("");
 }
 
-function verticalGridLines(spec: ChartSpec, plot: Rect, scales: ChartScales, theme: ThemeTokens): string {
-    const ticks = axisTicks(spec.xAxis, scales.xScale, spec.xAxis.scale === ChartScaleKind.Categorical
-        ? collectCategoryDomain(spec, "x", spec.series[0]?.encoding.x)
-        : undefined);
-    return ticks.map(t => `<line x1="${t.position}" y1="${plot.y}" x2="${t.position}" y2="${plot.y + plot.height}" stroke="${theme.colors.edgeStroke}" stroke-width="${GRID_STROKE_WIDTH}" opacity="${GRID_OPACITY}" />`).join("");
+function verticalGridLines(layout: ChartLayout, theme: ThemeTokens): string {
+    const {plot, xAxis} = layout;
+    return xAxis.ticks.map(t => `<line x1="${t.position}" y1="${plot.y}" x2="${t.position}" y2="${plot.y + plot.height}" stroke="${theme.colors.edgeStroke}" stroke-width="${GRID_STROKE_WIDTH}" opacity="${GRID_OPACITY}" />`).join("");
 }
 
-function horizontalGridLines(spec: ChartSpec, plot: Rect, scales: ChartScales, theme: ThemeTokens): string {
-    const ticks = axisTicks(spec.yAxis, scales.yScale, spec.yAxis.scale === ChartScaleKind.Categorical
-        ? collectCategoryDomain(spec, "y", spec.series[0]?.encoding.y)
-        : undefined);
-    return ticks.map(t => `<line x1="${plot.x}" y1="${t.position}" x2="${plot.x + plot.width}" y2="${t.position}" stroke="${theme.colors.edgeStroke}" stroke-width="${GRID_STROKE_WIDTH}" opacity="${GRID_OPACITY}" />`).join("");
+function horizontalGridLines(layout: ChartLayout, theme: ThemeTokens): string {
+    const {plot, yAxis} = layout;
+    return yAxis.ticks.map(t => `<line x1="${plot.x}" y1="${t.position}" x2="${plot.x + plot.width}" y2="${t.position}" stroke="${theme.colors.edgeStroke}" stroke-width="${GRID_STROKE_WIDTH}" opacity="${GRID_OPACITY}" />`).join("");
 }
 
 // ── Title ───────────────────────────────────────────────────────────────────
