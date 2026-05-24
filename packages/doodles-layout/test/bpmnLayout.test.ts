@@ -180,6 +180,59 @@ describe("applyBpmnLayout — pool with two lanes", () => {
     });
 });
 
+describe("applyBpmnLayout — gateway alternate branch avoids primary chain", () => {
+    // Order placed → Review → Approve? → Ship → Done
+    //                              └────── no ────→ Rejected
+    // The "no" branch must end up at the same X as Ship (same layer) but a
+    // different Y, so the flow can route around without crossing Ship.
+    const xml = `<?xml version="1.0"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="P">
+    <bpmn:startEvent id="Start" name="Order placed"/>
+    <bpmn:userTask id="Review" name="Review order"/>
+    <bpmn:exclusiveGateway id="Decide" name="Approve?"/>
+    <bpmn:serviceTask id="Ship" name="Ship order"/>
+    <bpmn:endEvent id="Done" name="Order shipped"/>
+    <bpmn:endEvent id="Rejected" name="Order rejected"/>
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Review"/>
+    <bpmn:sequenceFlow id="F2" sourceRef="Review" targetRef="Decide"/>
+    <bpmn:sequenceFlow id="F3" sourceRef="Decide" targetRef="Ship"/>
+    <bpmn:sequenceFlow id="F4" sourceRef="Ship" targetRef="Done"/>
+    <bpmn:sequenceFlow id="F5" sourceRef="Decide" targetRef="Rejected"/>
+  </bpmn:process>
+</bpmn:definitions>`;
+    const laid = applyBpmnLayout(importBpmnDiagram(xml, xmldomOpts));
+
+    it("places Ship and Rejected at the same X (same layer)", () => {
+        const shipX = laid.nodePlacements["Ship"]!.bounds.x;
+        const rejectedX = laid.nodePlacements["Rejected"]!.bounds.x;
+        // Centers should be equal (centered on the layer's max-width-column).
+        const shipCx = shipX + laid.nodePlacements["Ship"]!.bounds.width / 2;
+        const rejectedCx = rejectedX + laid.nodePlacements["Rejected"]!.bounds.width / 2;
+        expect(shipCx).toBe(rejectedCx);
+    });
+
+    it("places Ship and Rejected at different Y (vertically stacked in the layer)", () => {
+        const shipCy = laid.nodePlacements["Ship"]!.bounds.y + laid.nodePlacements["Ship"]!.bounds.height / 2;
+        const rejectedCy = laid.nodePlacements["Rejected"]!.bounds.y + laid.nodePlacements["Rejected"]!.bounds.height / 2;
+        expect(shipCy).not.toBe(rejectedCy);
+    });
+
+    it("places Done in a later layer than Ship/Rejected", () => {
+        const shipX = laid.nodePlacements["Ship"]!.bounds.x;
+        const doneX = laid.nodePlacements["Done"]!.bounds.x;
+        expect(doneX).toBeGreaterThan(shipX);
+    });
+
+    it("Decide gateway sits in a layer before both Ship and Rejected", () => {
+        const decideRight = laid.nodePlacements["Decide"]!.bounds.x + laid.nodePlacements["Decide"]!.bounds.width;
+        const shipLeft = laid.nodePlacements["Ship"]!.bounds.x;
+        const rejectedLeft = laid.nodePlacements["Rejected"]!.bounds.x;
+        expect(decideRight).toBeLessThanOrEqual(shipLeft);
+        expect(decideRight).toBeLessThanOrEqual(rejectedLeft);
+    });
+});
+
 describe("applyBpmnLayout — disconnected nodes still placed", () => {
     const xml = `<?xml version="1.0"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">

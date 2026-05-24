@@ -40,6 +40,7 @@ const ARTIFACT_HEIGHT = 60;
 // ── Spacing constants ──────────────────────────────────────────────────────
 
 const HORIZONTAL_NODE_GAP = 50;
+const VERTICAL_NODE_GAP = 30;
 const LANE_LABEL_BAND = 24;
 const LANE_VERTICAL_PADDING = 20;
 const LANE_HORIZONTAL_PADDING = 20;
@@ -101,8 +102,8 @@ function layoutPool(ctx: LayoutContext, pool: BpmnPool, top: number): number {
 
 function layoutPoolWithLanes(ctx: LayoutContext, pool: BpmnPool, lanes: BpmnLane[], top: number): number {
     const memberNodes = lanes.map(lane => filterFlowNodes(lane.flowNodeRefs.map(id => ctx.diagram.nodes[id])));
-    const laneRowHeights = lanes.map((_, i) => Math.max(DEFAULT_LANE_HEIGHT, contentHeight(memberNodes[i] ?? [])));
-    const laneContentWidth = Math.max(...lanes.map((_, i) => contentWidth(memberNodes[i] ?? [])), 1);
+    const laneRowHeights = lanes.map((_, i) => Math.max(DEFAULT_LANE_HEIGHT, layeredContentHeight(ctx.diagram, memberNodes[i] ?? [])));
+    const laneContentWidth = Math.max(...lanes.map((_, i) => layeredContentWidth(ctx.diagram, memberNodes[i] ?? [])), 1);
     const poolLeft = TOP_LEVEL_LEFT_OFFSET;
     const lanesLeft = poolLeft + POOL_LABEL_BAND;
     const laneWidth = laneContentWidth + LANE_HORIZONTAL_PADDING * 2 + LANE_LABEL_BAND;
@@ -123,28 +124,131 @@ function placeLane(ctx: LayoutContext, lane: BpmnLane, x: number, y: number, wid
     ctx.nodePlacements[lane.id] = {bounds: {x, y, width, height}, isHorizontal: true};
 }
 
+/**
+ * Layered placement: nodes are grouped by longest-path depth from sources, so
+ * a gateway's alternate branches end up in the same column as the primary
+ * branch (one above, one below) rather than after it. Without this, a "no"
+ * sequence flow that skips the primary chain would route straight through the
+ * intervening nodes. With layered placement, same-layer siblings stack
+ * vertically and the flow can route around them.
+ */
 function placeLaneMembers(ctx: LayoutContext, members: BpmnNode[], originX: number, laneTop: number, laneHeight: number): void {
     if (members.length === 0) return;
-    const ordered = topologicalOrderRestrictedTo(ctx.diagram, new Set(members.map(m => m.id)));
+    const scope = new Set(members.map(m => m.id));
+    const byLayer = groupByLayer(ctx.diagram, members, scope);
+    const sortedLayers = [...byLayer.keys()].sort((a, b) => a - b);
+    const layerLeftX = computeLayerXOffsets(byLayer, sortedLayers, originX);
     const centerY = laneTop + laneHeight / 2;
-    let cursorX = originX;
-    for (const id of ordered) {
-        const node = ctx.diagram.nodes[id];
-        if (!node) continue;
-        const size = sizeOf(node);
-        ctx.nodePlacements[id] = {
-            bounds: {x: cursorX, y: centerY - size.height / 2, width: size.width, height: size.height},
-        };
-        cursorX += size.width + HORIZONTAL_NODE_GAP;
+    for (const L of sortedLayers) {
+        const group = byLayer.get(L)!;
+        const layerWidth = maxNodeWidth(group);
+        const layerCenterX = (layerLeftX.get(L) ?? originX) + layerWidth / 2;
+        placeLayerGroup(ctx, group, layerCenterX, centerY);
     }
+}
+
+function placeLayerGroup(ctx: LayoutContext, group: BpmnNode[], layerCenterX: number, centerY: number): void {
+    if (group.length === 1) {
+        const node = group[0]!;
+        const size = sizeOf(node);
+        ctx.nodePlacements[node.id] = {
+            bounds: {x: layerCenterX - size.width / 2, y: centerY - size.height / 2, width: size.width, height: size.height},
+        };
+        return;
+    }
+    const totalHeight = group.reduce((sum, n) => sum + sizeOf(n).height, 0)
+        + VERTICAL_NODE_GAP * (group.length - 1);
+    let yCursor = centerY - totalHeight / 2;
+    for (const node of group) {
+        const size = sizeOf(node);
+        ctx.nodePlacements[node.id] = {
+            bounds: {x: layerCenterX - size.width / 2, y: yCursor, width: size.width, height: size.height},
+        };
+        yCursor += size.height + VERTICAL_NODE_GAP;
+    }
+}
+
+function computeLayerXOffsets(byLayer: Map<number, BpmnNode[]>, sortedLayers: number[], originX: number): Map<number, number> {
+    const out = new Map<number, number>();
+    let cursorX = originX;
+    for (const L of sortedLayers) {
+        out.set(L, cursorX);
+        cursorX += maxNodeWidth(byLayer.get(L)!) + HORIZONTAL_NODE_GAP;
+    }
+    return out;
+}
+
+function maxNodeWidth(group: BpmnNode[]): number {
+    let max = 0;
+    for (const n of group) {
+        const w = sizeOf(n).width;
+        if (w > max) max = w;
+    }
+    return max;
+}
+
+/**
+ * Group nodes by longest-path depth from any source (node with in-degree 0
+ * within the scope). Ensures forward edges always step at least one layer to
+ * the right.
+ */
+function groupByLayer(diagram: BpmnDiagram, members: BpmnNode[], scope: Set<string>): Map<number, BpmnNode[]> {
+    const layer = computeLayerDepths(diagram, scope);
+    const out = new Map<number, BpmnNode[]>();
+    for (const m of members) {
+        const L = layer.get(m.id) ?? 0;
+        if (!out.has(L)) out.set(L, []);
+        out.get(L)!.push(m);
+    }
+    return out;
+}
+
+function computeLayerDepths(diagram: BpmnDiagram, scope: Set<string>): Map<string, number> {
+    const adjacency = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+    for (const id of scope) {
+        adjacency.set(id, []);
+        inDegree.set(id, 0);
+    }
+    for (const flow of Object.values(diagram.flows)) {
+        if (flow.kind !== BpmnFlowKind.Sequence) continue;
+        if (!scope.has(flow.sourceRef) || !scope.has(flow.targetRef)) continue;
+        adjacency.get(flow.sourceRef)!.push(flow.targetRef);
+        inDegree.set(flow.targetRef, (inDegree.get(flow.targetRef) ?? 0) + 1);
+    }
+    const layer = new Map<string, number>();
+    const queue: string[] = [];
+    for (const [id, deg] of inDegree) {
+        if (deg === 0) {
+            layer.set(id, 0);
+            queue.push(id);
+        }
+    }
+    const remaining = new Map(inDegree);
+    while (queue.length > 0) {
+        const id = queue.shift()!;
+        const myLayer = layer.get(id) ?? 0;
+        for (const next of adjacency.get(id) ?? []) {
+            const nextLayer = Math.max(layer.get(next) ?? 0, myLayer + 1);
+            layer.set(next, nextLayer);
+            const leftover = (remaining.get(next) ?? 1) - 1;
+            remaining.set(next, leftover);
+            if (leftover === 0) queue.push(next);
+        }
+    }
+    // Cycle members or disconnected nodes get the trailing layer.
+    let maxLayer = -1;
+    for (const v of layer.values()) if (v > maxLayer) maxLayer = v;
+    for (const id of scope) if (!layer.has(id)) layer.set(id, maxLayer + 1);
+    return layer;
 }
 
 function layoutPoolWithoutLanes(ctx: LayoutContext, pool: BpmnPool, top: number): number {
     const members = filterFlowNodes(Object.values(ctx.diagram.nodes).filter(n => n.parentRef === pool.processRef));
-    const rowHeight = Math.max(DEFAULT_LANE_HEIGHT, contentHeight(members));
+    const rowHeight = Math.max(DEFAULT_LANE_HEIGHT, layeredContentHeight(ctx.diagram, members));
     const poolLeft = TOP_LEVEL_LEFT_OFFSET;
     const innerLeft = poolLeft + POOL_LABEL_BAND + LANE_HORIZONTAL_PADDING;
-    const innerWidth = Math.max(contentWidth(members), 1);
+    const innerWidth = Math.max(layeredContentWidth(ctx.diagram, members), 1);
     placeLaneMembers(ctx, members, innerLeft, top, rowHeight);
     ctx.nodePlacements[pool.id] = {
         bounds: {x: poolLeft, y: top, width: POOL_LABEL_BAND + LANE_HORIZONTAL_PADDING * 2 + innerWidth, height: rowHeight},
@@ -160,7 +264,7 @@ function layoutOrphanProcess(ctx: LayoutContext, top: number): void {
     const orphans = filterFlowNodes(Object.values(ctx.diagram.nodes).filter(n => !placed.has(n.id) && !isContainer(n)));
     if (orphans.length === 0) return;
     const left = TOP_LEVEL_LEFT_OFFSET;
-    const rowHeight = Math.max(DEFAULT_LANE_HEIGHT, contentHeight(orphans));
+    const rowHeight = Math.max(DEFAULT_LANE_HEIGHT, layeredContentHeight(ctx.diagram, orphans));
     placeLaneMembers(ctx, orphans, left, top, rowHeight);
 }
 
@@ -224,41 +328,6 @@ function clampAwayFrom(target: number, anchor: number, margin: number): number {
     return target;
 }
 
-// ── Topological ordering ───────────────────────────────────────────────────
-
-function topologicalOrderRestrictedTo(diagram: BpmnDiagram, scope: Set<string>): string[] {
-    const inDegree = new Map<string, number>();
-    const adjacency = new Map<string, string[]>();
-    for (const id of scope) {
-        inDegree.set(id, 0);
-        adjacency.set(id, []);
-    }
-    for (const flow of Object.values(diagram.flows)) {
-        if (flow.kind !== BpmnFlowKind.Sequence) continue;
-        if (!scope.has(flow.sourceRef) || !scope.has(flow.targetRef)) continue;
-        adjacency.get(flow.sourceRef)!.push(flow.targetRef);
-        inDegree.set(flow.targetRef, (inDegree.get(flow.targetRef) ?? 0) + 1);
-    }
-    const queue: string[] = [];
-    for (const [id, deg] of inDegree) if (deg === 0) queue.push(id);
-    const out: string[] = [];
-    const seen = new Set<string>();
-    while (queue.length > 0) {
-        const id = queue.shift()!;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        out.push(id);
-        for (const next of adjacency.get(id) ?? []) {
-            const d = (inDegree.get(next) ?? 0) - 1;
-            inDegree.set(next, d);
-            if (d <= 0) queue.push(next);
-        }
-    }
-    // Append unreached nodes (cycles or disconnected) to preserve all members.
-    for (const id of scope) if (!seen.has(id)) out.push(id);
-    return out;
-}
-
 // ── Node sizing & filtering ────────────────────────────────────────────────
 
 function sizeOf(node: BpmnNode): NodeSize {
@@ -304,19 +373,33 @@ function filterFlowNodes(maybeNodes: Array<BpmnNode | undefined>): BpmnNode[] {
     return out;
 }
 
-function contentWidth(nodes: BpmnNode[]): number {
-    if (nodes.length === 0) return 0;
-    const total = nodes.reduce((sum, n) => sum + sizeOf(n).width, 0);
-    return total + HORIZONTAL_NODE_GAP * (nodes.length - 1);
+/**
+ * Width and height of a lane's content under the layered layout. Width sums
+ * the max-width-per-layer; height is the tallest vertically-stacked group
+ * across all layers.
+ */
+function layeredContentWidth(diagram: BpmnDiagram, members: BpmnNode[]): number {
+    if (members.length === 0) return 0;
+    const scope = new Set(members.map(m => m.id));
+    const byLayer = groupByLayer(diagram, members, scope);
+    const sortedLayers = [...byLayer.keys()].sort((a, b) => a - b);
+    let total = 0;
+    for (const L of sortedLayers) total += maxNodeWidth(byLayer.get(L)!);
+    total += HORIZONTAL_NODE_GAP * Math.max(0, sortedLayers.length - 1);
+    return total;
 }
 
-function contentHeight(nodes: BpmnNode[]): number {
-    let max = 0;
-    for (const n of nodes) {
-        const h = sizeOf(n).height;
-        if (h > max) max = h;
+function layeredContentHeight(diagram: BpmnDiagram, members: BpmnNode[]): number {
+    if (members.length === 0) return 0;
+    const scope = new Set(members.map(m => m.id));
+    const byLayer = groupByLayer(diagram, members, scope);
+    let maxStack = 0;
+    for (const group of byLayer.values()) {
+        const stack = group.reduce((sum, n) => sum + sizeOf(n).height, 0)
+            + VERTICAL_NODE_GAP * Math.max(0, group.length - 1);
+        if (stack > maxStack) maxStack = stack;
     }
-    return max + LANE_VERTICAL_PADDING * 2;
+    return maxStack + LANE_VERTICAL_PADDING * 2;
 }
 
 // ── Collection helpers ─────────────────────────────────────────────────────
