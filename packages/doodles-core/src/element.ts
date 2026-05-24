@@ -30,6 +30,7 @@ export enum ElementType {
     Cluster,
     MindMapDiagram,
     XyChartDiagram,
+    BpmnDiagram,
 }
 
 export interface ElementRef {

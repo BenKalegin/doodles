@@ -33,9 +33,11 @@
     "@benkalegin/doodles-core": "workspace:*"
   },
   "devDependencies": {
+    "@benkalegin/doodles-bpmn": "workspace:*",
     "@benkalegin/doodles-layout": "workspace:*",
     "@benkalegin/doodles-mermaid": "workspace:*",
-    "@benkalegin/doodles-vega": "workspace:*"
+    "@benkalegin/doodles-vega": "workspace:*",
+    "@xmldom/xmldom": "^0.9.5"
   },
   "description": "Renders a laid-out Doodle to SVG with theme tokens.",
   "license": "MIT",

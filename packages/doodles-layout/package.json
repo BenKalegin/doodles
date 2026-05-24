@@ -33,6 +33,10 @@
     "@benkalegin/doodles-core": "workspace:*",
     "@benkalegin/filigree-api": "^0.1.3"
   },
+  "devDependencies": {
+    "@benkalegin/doodles-bpmn": "workspace:*",
+    "@xmldom/xmldom": "^0.9.5"
+  },
   "description": "Auto-layout for Doodle graphs via filigree, with hint translation and port-alignment post-pass.",
   "license": "MIT",
   "author": "Ben Kalegin",

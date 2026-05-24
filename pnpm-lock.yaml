@@ -20,6 +20,9 @@ importers:
 
   packages/doodles-api:
     dependencies:
+      '@benkalegin/doodles-bpmn':
+        specifier: workspace:*
+        version: link:../doodles-bpmn
       '@benkalegin/doodles-core':
         specifier: workspace:*
         version: link:../doodles-core
@@ -33,6 +36,19 @@ importers:
         specifier: workspace:*
         version: link:../doodles-svg
 
+  packages/doodles-bpmn:
+    dependencies:
+      '@benkalegin/doodles-core':
+        specifier: workspace:*
+        version: link:../doodles-core
+      nanoid:
+        specifier: ^3.3.12
+        version: 3.3.12
+    devDependencies:
+      '@xmldom/xmldom':
+        specifier: ^0.9.5
+        version: 0.9.10
+
   packages/doodles-core: {}
 
   packages/doodles-layout:
@@ -43,6 +59,13 @@ importers:
       '@benkalegin/filigree-api':
         specifier: ^0.1.3
         version: 0.1.3
+    devDependencies:
+      '@benkalegin/doodles-bpmn':
+        specifier: workspace:*
+        version: link:../doodles-bpmn
+      '@xmldom/xmldom':
+        specifier: ^0.9.5
+        version: 0.9.10
 
   packages/doodles-mermaid:
     dependencies:
@@ -62,6 +85,9 @@ importers:
         specifier: workspace:*
         version: link:../doodles-core
     devDependencies:
+      '@benkalegin/doodles-bpmn':
+        specifier: workspace:*
+        version: link:../doodles-bpmn
       '@benkalegin/doodles-layout':
         specifier: workspace:*
         version: link:../doodles-layout
@@ -71,6 +97,9 @@ importers:
       '@benkalegin/doodles-vega':
         specifier: workspace:*
         version: link:../doodles-vega
+      '@xmldom/xmldom':
+        specifier: ^0.9.5
+        version: 0.9.10
 
   packages/doodles-vega:
     dependencies:
@@ -438,6 +467,10 @@ packages:
 
   '@vitest/utils@2.1.9':
     resolution: {integrity: sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ==}
+
+  '@xmldom/xmldom@0.9.10':
+    resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
+    engines: {node: '>=14.6'}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
@@ -887,6 +920,8 @@ snapshots:
       '@vitest/pretty-format': 2.1.9
       loupe: 3.2.1
       tinyrainbow: 1.2.0
+
+  '@xmldom/xmldom@0.9.10': {}
 
   assertion-error@2.0.1: {}
 

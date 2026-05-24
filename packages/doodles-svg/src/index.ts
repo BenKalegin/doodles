@@ -8,6 +8,7 @@ export {type ThemeTokens, defaultLightTheme, defaultDarkTheme} from "./theme.js"
 export {type EdgeRoute, routeEdges} from "./routing.js";
 export {type SequenceRenderOptions, renderSequenceSvg} from "./sequence.js";
 export {type ChartRenderOptions, renderChartSvg} from "./chart.js";
+export {type BpmnRenderOptions, renderBpmnSvg} from "./bpmn.js";
 
 /**
  * Shape of a laid-out Doodle the SVG renderer consumes. Matches what the

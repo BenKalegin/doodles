@@ -52,6 +52,8 @@ export {
     type ErCardinality,
     type ErRelationshipState,
     type PieSliceState,
+    type BpmnNodeData,
+    type BpmnLinkData,
     type NodeState,
     RouteStyle,
     TipStyle,
@@ -148,5 +150,32 @@ export {
     type ChartSource,
     type ChartSpec,
 } from "./chartDiagramState.js";
+
+export {
+    BpmnElementKind,
+    BpmnEventDefinition,
+    BpmnGatewayDirection,
+    BpmnFlowKind,
+    BpmnPoolOrientation,
+    BpmnSourceFormat,
+    type BpmnExtensionAttr,
+    type BpmnExtensionChild,
+    type BpmnExtensions,
+    type BpmnActivity,
+    type BpmnEvent,
+    type BpmnGateway,
+    type BpmnPool,
+    type BpmnLane,
+    type BpmnDataObject,
+    type BpmnTextAnnotation,
+    type BpmnGroup,
+    type BpmnNode,
+    type BpmnProcess,
+    type BpmnFlow,
+    type BpmnNodePlacement,
+    type BpmnFlowPlacement,
+    type BpmnSource,
+    type BpmnDiagram,
+} from "./bpmnDiagramState.js";
 
 export const DOODLES_VERSION = "0.2.0";

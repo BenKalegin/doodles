@@ -19,7 +19,8 @@ export type DiagramKind =
     | "state"
     | "mindmap"
     | "deployment"
-    | "chart";
+    | "chart"
+    | "bpmn";
 
 export interface PortRules {
     /** Which sides of a node may host ports. */
@@ -32,7 +33,7 @@ export interface PortRules {
 
 export interface KindConstraints {
     /** Engine that lays this kind out. */
-    layoutAlgorithm: "filigree-layered" | "sequence" | "gantt-timeline" | "er" | "pie" | "mind-map-radial" | "state-fsm" | "chart-axes";
+    layoutAlgorithm: "filigree-layered" | "sequence" | "gantt-timeline" | "er" | "pie" | "mind-map-radial" | "state-fsm" | "chart-axes" | "bpmn-flow";
     /** Pass-through algorithm options (engine-specific). */
     layoutOptions?: Record<string, unknown>;
 
@@ -73,9 +74,24 @@ const CHART_CONSTRAINTS: KindConstraints = {
     background: "grid",
 };
 
+const BPMN_CONSTRAINTS: KindConstraints = {
+    layoutAlgorithm: "bpmn-flow",
+    rendererId: "svg-bpmn",
+    // Within-lane free movement; pool/lane reordering is constrained separately by the editor.
+    movementAxes: "lane-constrained",
+    portRules: {
+        sides: [PortAlignment.Top, PortAlignment.Bottom, PortAlignment.Left, PortAlignment.Right],
+        edgePosRatioEditable: true,
+    },
+    // BPMN gateways and sequence flows derive meaning from connectivity, not sibling order.
+    nodeOrderingMatters: false,
+    background: "none",
+};
+
 const KIND_REGISTRY: Partial<Record<DiagramKind, KindConstraints>> = {
     flowchart: FLOWCHART_CONSTRAINTS,
     chart: CHART_CONSTRAINTS,
+    bpmn: BPMN_CONSTRAINTS,
 };
 
 /**

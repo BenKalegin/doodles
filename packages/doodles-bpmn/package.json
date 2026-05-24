@@ -1,6 +1,6 @@
 {
-  "name": "@benkalegin/doodles-api",
-  "version": "0.3.12",
+  "name": "@benkalegin/doodles-bpmn",
+  "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -31,17 +31,17 @@
   },
   "dependencies": {
     "@benkalegin/doodles-core": "workspace:*",
-    "@benkalegin/doodles-mermaid": "workspace:*",
-    "@benkalegin/doodles-layout": "workspace:*",
-    "@benkalegin/doodles-svg": "workspace:*",
-    "@benkalegin/doodles-bpmn": "workspace:*"
+    "nanoid": "^3.3.12"
   },
-  "description": "Single-import facade for doodles: parse, layout, render.",
+  "devDependencies": {
+    "@xmldom/xmldom": "^0.9.5"
+  },
+  "description": "BPMN 2.0 (Descriptive subset) XML importer → Doodle BpmnDiagram, with foreign-namespace extension passthrough for lossless round-trip.",
   "license": "MIT",
   "author": "Ben Kalegin",
   "repository": {
     "type": "git",
     "url": "https://github.com/BenKalegin/doodles.git",
-    "directory": "packages/doodles-api"
+    "directory": "packages/doodles-bpmn"
   }
 }

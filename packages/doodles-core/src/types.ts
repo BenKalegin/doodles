@@ -1,5 +1,6 @@
 import type {ElementRef, Id} from "./element.js";
 import type {FlowchartNodeKind} from "./flowchart.js";
+import type {BpmnElementKind, BpmnEventDefinition, BpmnFlowKind, BpmnGatewayDirection} from "./bpmnDiagramState.js";
 
 export interface ColorSchema {
     strokeColor: string;
@@ -114,6 +115,36 @@ export interface PieSliceState {
     value: number;
 }
 
+/**
+ * BPMN-specific node metadata. Mirrors the erEntity/ganttTask pattern: when
+ * present, the structure-diagram renderer switches to BPMN-specific visuals
+ * (event ring weights, gateway markers, task type icons, pool/lane bands).
+ *
+ * For Pool/Lane kinds, `isHorizontal` controls orientation. `eventDefinition`
+ * applies to events; `gatewayDirection` to gateways. Foreign-namespace
+ * extension passthrough lives on the node directly via `bpmnExtensions`.
+ */
+export interface BpmnNodeData {
+    kind: BpmnElementKind;
+    eventDefinition?: BpmnEventDefinition;
+    gatewayDirection?: BpmnGatewayDirection;
+    /** Pool orientation; lanes inherit from their parent pool. */
+    isHorizontal?: boolean;
+    /** Process id this pool participates in (Pool kind only). */
+    processRef?: Id;
+}
+
+/**
+ * BPMN-specific link metadata. When present, the link renders as a BPMN flow:
+ * sequence flow (solid + filled arrow), message flow (dashed + open arrow +
+ * source circle), or association (dotted).
+ */
+export interface BpmnLinkData {
+    kind: BpmnFlowKind;
+    /** Sequence-flow condition expression (when present). */
+    condition?: string;
+}
+
 export interface NodeState extends DiagramElement, HasColorSchema {
     text: string;
     ports: Id[];
@@ -123,6 +154,8 @@ export interface NodeState extends DiagramElement, HasColorSchema {
     flowchartKind?: FlowchartNodeKind;
     ganttTask?: GanttTaskState;
     memberNodeIds?: string[];
+    /** When present, the node is a BPMN element and renders with BPMN-specific visuals. */
+    bpmnNode?: BpmnNodeData;
 }
 
 export enum RouteStyle {
@@ -169,6 +202,8 @@ export interface LinkState extends DiagramElement, HasColorSchema {
     text?: string;
     ganttDependency?: GanttDependencyState;
     erRelationship?: ErRelationshipState;
+    /** When present, the link renders as a BPMN flow (sequence/message/association). */
+    bpmnFlow?: BpmnLinkData;
     tipStyle1: TipStyle;
     tipStyle2: TipStyle;
     routeStyle: RouteStyle;

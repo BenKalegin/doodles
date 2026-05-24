@@ -14,6 +14,8 @@ export {applyFiligreeLayout} from "./filigreeLayout.js";
 
 export {canRelayoutStructure, relayoutStructure} from "./structureRelayout.js";
 
+export {applyBpmnLayout} from "./bpmnLayout.js";
+
 export {
     type LaidOutDiagram,
     type NodeAssert,
