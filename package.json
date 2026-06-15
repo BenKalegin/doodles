@@ -12,7 +12,8 @@
     "clean": "pnpm -r clean",
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "score": "vitest run --config vitest.score.config.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
