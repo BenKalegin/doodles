@@ -47,7 +47,10 @@ function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens): Ed
         : (tgtCluster !== undefined ? diagram.nodes[tgtCluster]?.bounds ?? tgtBounds : tgtBounds);
 
     const direct = orthogonalRoute(from, to, srcAlign, tgtAlign, srcDetourBounds, tgtDetourBounds);
-    const polyline = rerouteAroundObstacles(direct, srcAlign, tgtAlign, tgtBounds, diagram);
+    // A source with a single outgoing edge has no fan-out to disturb, so the
+    // reroute may flip its exit face to reach a shorter clear column.
+    const canFlipExit = outgoingEdgeCount(sourceNodeId, diagram) === 1;
+    const polyline = rerouteAroundObstacles(direct, srcAlign, tgtAlign, srcBounds, tgtBounds, diagram, canFlipExit);
     const label = String(link.text ?? "");
     const base: EdgeRoute = {edgeId: String(link.id), sourceNodeId, targetNodeId, polyline, label};
     if (!label) return base;
@@ -79,32 +82,69 @@ const RISER_GAP_MARGIN_PX = 20;
  * unchanged, so clean edges (and their golden snapshots) are untouched.
  *
  * Scope: horizontal-exit / horizontal-target routes (the H↔H container case).
- * It keeps the source's exit face, searches for a riser column on the exit side
- * whose vertical leg and both connecting legs clear every node interior, and
- * enters the target through whichever face that column approaches.
+ * It searches for a riser column whose vertical leg and both connecting legs
+ * clear every node interior, entering the target through whichever face that
+ * column approaches, and keeps the shortest such route. When `canFlipExit` is
+ * set the opposite source face is considered too — letting a back-edge that
+ * would otherwise loop the long way around a cluster take the near side.
  */
 function rerouteAroundObstacles(
     polyline: Coordinate[],
     srcAlign: PortAlignment | undefined,
     tgtAlign: PortAlignment | undefined,
+    srcBounds: Bounds,
     tgtBounds: Bounds,
     diagram: RenderableDoodle,
+    canFlipExit: boolean,
 ): Coordinate[] {
     if (!isHorizontalAlignment(srcAlign) || !isHorizontalAlignment(tgtAlign)) return polyline;
     const obstacles = collectObstacleInteriors(diagram);
     if (!polylineEntersAny(polyline, obstacles)) return polyline;
 
-    const from = polyline[0]!;
-    const exitRight = srcAlign === PortAlignment.Right;
+    const srcCenterY = srcBounds.y + srcBounds.height / 2;
     const tgtCenterY = tgtBounds.y + tgtBounds.height / 2;
     const tgtCenterX = tgtBounds.x + tgtBounds.width / 2;
-    const targetAbove = tgtCenterY < from.y;
+    const targetAbove = tgtCenterY < srcCenterY;
+    const exitSides = exitSideOrder(srcAlign === PortAlignment.Right, canFlipExit);
 
-    for (const x of candidateRiserColumns(from, exitRight, tgtCenterX, diagram)) {
-        const candidate = buildReroutedPolyline(from, x, tgtBounds, tgtCenterY, targetAbove);
-        if (!polylineEntersAny(candidate, obstacles)) return candidate;
+    let best: Coordinate[] | undefined;
+    let bestLength = Infinity;
+    for (const exitRight of exitSides) {
+        const from = {x: exitRight ? srcBounds.x + srcBounds.width : srcBounds.x, y: srcCenterY};
+        for (const x of candidateRiserColumns(from, exitRight, tgtCenterX, diagram)) {
+            const candidate = buildReroutedPolyline(from, x, tgtBounds, tgtCenterY, targetAbove);
+            if (polylineEntersAny(candidate, obstacles)) continue;
+            const length = polylineLength(candidate);
+            if (length < bestLength) {
+                bestLength = length;
+                best = candidate;
+            }
+        }
     }
-    return polyline;
+    return best ?? polyline;
+}
+
+/** Source exit sides to try, current face first so it wins length ties. */
+function exitSideOrder(currentRight: boolean, canFlipExit: boolean): boolean[] {
+    return canFlipExit ? [currentRight, !currentRight] : [currentRight];
+}
+
+function outgoingEdgeCount(sourceNodeId: string, diagram: RenderableDoodle): number {
+    let count = 0;
+    for (const el of Object.values(diagram.elements)) {
+        if (el?.type !== ElementType.ClassLink) continue;
+        const p1 = diagram.elements[(el as {port1: string}).port1];
+        if (p1 && String(p1.nodeId) === sourceNodeId) count++;
+    }
+    return count;
+}
+
+function polylineLength(polyline: readonly Coordinate[]): number {
+    let total = 0;
+    for (let i = 1; i < polyline.length; i++) {
+        total += Math.abs(polyline[i]!.x - polyline[i - 1]!.x) + Math.abs(polyline[i]!.y - polyline[i - 1]!.y);
+    }
+    return total;
 }
 
 function collectObstacleInteriors(diagram: RenderableDoodle): Bounds[] {
