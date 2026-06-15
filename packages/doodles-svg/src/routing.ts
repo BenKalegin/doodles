@@ -101,18 +101,29 @@ function rerouteAroundObstacles(
     const obstacles = collectObstacleInteriors(diagram);
     if (!polylineEntersAny(polyline, obstacles)) return polyline;
 
+    // The original endpoints carry the distributed port attach points (their
+    // y-ratio separates edges sharing a face). Reuse them whenever the reroute
+    // keeps that face, so a rerouted edge doesn't land on top of a sibling that
+    // exits/enters the same face at the face centre.
+    const originalExit = polyline[0]!;
+    const originalEntry = polyline[polyline.length - 1]!;
     const srcCenterY = srcBounds.y + srcBounds.height / 2;
-    const tgtCenterY = tgtBounds.y + tgtBounds.height / 2;
     const tgtCenterX = tgtBounds.x + tgtBounds.width / 2;
-    const targetAbove = tgtCenterY < srcCenterY;
-    const exitSides = exitSideOrder(srcAlign === PortAlignment.Right, canFlipExit);
+    const srcExitRight = srcAlign === PortAlignment.Right;
+    const targetAbove = originalEntry.y < srcCenterY;
+    const exitSides = exitSideOrder(srcExitRight, canFlipExit);
 
     let best: Coordinate[] | undefined;
     let bestLength = Infinity;
     for (const exitRight of exitSides) {
-        const from = {x: exitRight ? srcBounds.x + srcBounds.width : srcBounds.x, y: srcCenterY};
+        // Keep the distributed exit point unless we flip to the opposite face;
+        // flipping is only allowed for single-out-edge sources, so the face
+        // centre is collision-free there.
+        const from = exitRight === srcExitRight
+            ? originalExit
+            : {x: exitRight ? srcBounds.x + srcBounds.width : srcBounds.x, y: srcCenterY};
         for (const x of candidateRiserColumns(from, exitRight, tgtCenterX, diagram)) {
-            const candidate = buildReroutedPolyline(from, x, tgtBounds, tgtCenterY, targetAbove);
+            const candidate = buildReroutedPolyline(from, x, tgtBounds, originalEntry, tgtAlign, targetAbove);
             if (polylineEntersAny(candidate, obstacles)) continue;
             const length = polylineLength(candidate);
             if (length < bestLength) {
@@ -200,21 +211,29 @@ function candidateRiserColumns(
  * follows the column: a column left of the target enters its Left face, right
  * of it the Right face, and a column within the target's x-span drops straight
  * into the near horizontal face (Bottom when the target sits above the source).
+ *
+ * When the entry face matches the target's assigned face, the original (port-
+ * distributed) entry point is reused so the route keeps its lane; otherwise it
+ * attaches at the new face's centre.
  */
 function buildReroutedPolyline(
     from: Coordinate,
     x: number,
     tgtBounds: Bounds,
-    tgtCenterY: number,
+    originalEntry: Coordinate,
+    tgtAlign: PortAlignment | undefined,
     targetAbove: boolean,
 ): Coordinate[] {
     const tgtLeft = tgtBounds.x;
     const tgtRight = tgtBounds.x + tgtBounds.width;
+    const tgtCenterY = tgtBounds.y + tgtBounds.height / 2;
     if (x <= tgtLeft) {
-        return [from, {x, y: from.y}, {x, y: tgtCenterY}, {x: tgtLeft, y: tgtCenterY}];
+        const entry = tgtAlign === PortAlignment.Left ? originalEntry : {x: tgtLeft, y: tgtCenterY};
+        return [from, {x, y: from.y}, {x, y: entry.y}, entry];
     }
     if (x >= tgtRight) {
-        return [from, {x, y: from.y}, {x, y: tgtCenterY}, {x: tgtRight, y: tgtCenterY}];
+        const entry = tgtAlign === PortAlignment.Right ? originalEntry : {x: tgtRight, y: tgtCenterY};
+        return [from, {x, y: from.y}, {x, y: entry.y}, entry];
     }
     const entryY = targetAbove ? tgtBounds.y + tgtBounds.height : tgtBounds.y;
     return [from, {x, y: from.y}, {x, y: entryY}];
