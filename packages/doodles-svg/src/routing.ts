@@ -1,4 +1,4 @@
-import {ElementType, PortAlignment, type Bounds, type Coordinate, type EdgeRoute} from "@benkalegin/doodles-core";
+import {ElementType, PortAlignment, type Bounds, type Coordinate, type EdgeRoute, insetBounds, segmentEntersRect} from "@benkalegin/doodles-core";
 import {parseRichText} from "./text.js";
 import type {RenderableDoodle} from "./index.js";
 import type {ThemeTokens} from "./theme.js";
@@ -46,7 +46,8 @@ function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens): Ed
         ? tgtBounds
         : (tgtCluster !== undefined ? diagram.nodes[tgtCluster]?.bounds ?? tgtBounds : tgtBounds);
 
-    const polyline = orthogonalRoute(from, to, srcAlign, tgtAlign, srcDetourBounds, tgtDetourBounds);
+    const direct = orthogonalRoute(from, to, srcAlign, tgtAlign, srcDetourBounds, tgtDetourBounds);
+    const polyline = rerouteAroundObstacles(direct, srcAlign, tgtAlign, tgtBounds, diagram);
     const label = String(link.text ?? "");
     const base: EdgeRoute = {edgeId: String(link.id), sourceNodeId, targetNodeId, polyline, label};
     if (!label) return base;
@@ -60,6 +61,123 @@ function clusterContaining(nodeId: string, diagram: RenderableDoodle): string | 
         return String(el.id);
     }
     return undefined;
+}
+
+// Matches the renderer's hairline node stroke and layoutTesting's intersection
+// inset: a route grazing a node's perimeter (a port attach stub) is legal, but
+// entering the inset interior is a strike-through.
+const OBSTACLE_INTERIOR_INSET_PX = 0.5;
+// Keep a rerouted riser at least this far off any node edge, so it reads as
+// "running down the gutter between columns" rather than hugging a border.
+const RISER_GAP_MARGIN_PX = 20;
+
+/**
+ * The base router (`orthogonalRoute`) is not obstacle-aware: a cross-cluster
+ * back-edge whose single riser lands in a column occupied by an unrelated node
+ * slices straight through it (the documented TB-routing gap). This pass repairs
+ * only such routes — if the route already clears every node it is returned
+ * unchanged, so clean edges (and their golden snapshots) are untouched.
+ *
+ * Scope: horizontal-exit / horizontal-target routes (the H↔H container case).
+ * It keeps the source's exit face, searches for a riser column on the exit side
+ * whose vertical leg and both connecting legs clear every node interior, and
+ * enters the target through whichever face that column approaches.
+ */
+function rerouteAroundObstacles(
+    polyline: Coordinate[],
+    srcAlign: PortAlignment | undefined,
+    tgtAlign: PortAlignment | undefined,
+    tgtBounds: Bounds,
+    diagram: RenderableDoodle,
+): Coordinate[] {
+    if (!isHorizontalAlignment(srcAlign) || !isHorizontalAlignment(tgtAlign)) return polyline;
+    const obstacles = collectObstacleInteriors(diagram);
+    if (!polylineEntersAny(polyline, obstacles)) return polyline;
+
+    const from = polyline[0]!;
+    const exitRight = srcAlign === PortAlignment.Right;
+    const tgtCenterY = tgtBounds.y + tgtBounds.height / 2;
+    const tgtCenterX = tgtBounds.x + tgtBounds.width / 2;
+    const targetAbove = tgtCenterY < from.y;
+
+    for (const x of candidateRiserColumns(from, exitRight, tgtCenterX, diagram)) {
+        const candidate = buildReroutedPolyline(from, x, tgtBounds, tgtCenterY, targetAbove);
+        if (!polylineEntersAny(candidate, obstacles)) return candidate;
+    }
+    return polyline;
+}
+
+function collectObstacleInteriors(diagram: RenderableDoodle): Bounds[] {
+    const interiors: Bounds[] = [];
+    for (const el of Object.values(diagram.elements)) {
+        if (el?.type !== ElementType.ClassNode) continue;
+        const b = diagram.nodes[el.id]?.bounds;
+        if (!b) continue;
+        const interior = insetBounds(b, OBSTACLE_INTERIOR_INSET_PX);
+        if (interior.width > 0 && interior.height > 0) interiors.push(interior);
+    }
+    return interiors;
+}
+
+function polylineEntersAny(polyline: Coordinate[], obstacles: readonly Bounds[]): boolean {
+    for (let i = 1; i < polyline.length; i++) {
+        const p1 = polyline[i - 1]!;
+        const p2 = polyline[i]!;
+        for (const rect of obstacles) {
+            if (segmentEntersRect(p1, p2, rect)) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Candidate riser columns: every node's left/right edge offset outward by the
+ * gutter margin, restricted to the source's exit side, ordered by proximity to
+ * the target so the riser enters as close to the target column as it can.
+ */
+function candidateRiserColumns(
+    from: Coordinate,
+    exitRight: boolean,
+    tgtCenterX: number,
+    diagram: RenderableDoodle,
+): number[] {
+    const columns = new Set<number>();
+    for (const el of Object.values(diagram.elements)) {
+        if (el?.type !== ElementType.ClassNode) continue;
+        const b = diagram.nodes[el.id]?.bounds;
+        if (!b) continue;
+        columns.add(b.x - RISER_GAP_MARGIN_PX);
+        columns.add(b.x + b.width + RISER_GAP_MARGIN_PX);
+    }
+    const limit = exitRight ? from.x + RISER_GAP_MARGIN_PX : from.x - RISER_GAP_MARGIN_PX;
+    return [...columns]
+        .filter(x => (exitRight ? x >= limit : x <= limit))
+        .sort((a, b) => Math.abs(a - tgtCenterX) - Math.abs(b - tgtCenterX));
+}
+
+/**
+ * Build the candidate route for a chosen riser column. The target entry face
+ * follows the column: a column left of the target enters its Left face, right
+ * of it the Right face, and a column within the target's x-span drops straight
+ * into the near horizontal face (Bottom when the target sits above the source).
+ */
+function buildReroutedPolyline(
+    from: Coordinate,
+    x: number,
+    tgtBounds: Bounds,
+    tgtCenterY: number,
+    targetAbove: boolean,
+): Coordinate[] {
+    const tgtLeft = tgtBounds.x;
+    const tgtRight = tgtBounds.x + tgtBounds.width;
+    if (x <= tgtLeft) {
+        return [from, {x, y: from.y}, {x, y: tgtCenterY}, {x: tgtLeft, y: tgtCenterY}];
+    }
+    if (x >= tgtRight) {
+        return [from, {x, y: from.y}, {x, y: tgtCenterY}, {x: tgtRight, y: tgtCenterY}];
+    }
+    const entryY = targetAbove ? tgtBounds.y + tgtBounds.height : tgtBounds.y;
+    return [from, {x, y: from.y}, {x, y: entryY}];
 }
 
 interface ResolvedEndpoints {

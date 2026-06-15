@@ -10,6 +10,8 @@ export {
     withinYBounds,
     minus,
     center,
+    insetBounds,
+    segmentEntersRect,
 } from "./bounds.js";
 
 export {type Id, ElementType, type ElementRef} from "./element.js";

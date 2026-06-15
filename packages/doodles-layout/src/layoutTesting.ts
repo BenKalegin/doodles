@@ -1,4 +1,4 @@
-import {type Bounds, center, type Coordinate, type EdgeRoute, ElementType, PortAlignment} from "@benkalegin/doodles-core";
+import {type Bounds, center, type Coordinate, type EdgeRoute, ElementType, insetBounds, PortAlignment, segmentEntersRect} from "@benkalegin/doodles-core";
 
 // Default tolerance for centroid/centered comparisons in pixels. Picks up
 // rounding (sub-pixel layout coords) without masking real drift.
@@ -100,34 +100,6 @@ function polylinesCross(a: readonly Coordinate[], b: readonly Coordinate[]): boo
  * caller insets the rect slightly so port attach points (which sit on a node's
  * perimeter by construction) don't trigger a false positive.
  */
-function segmentEntersRect(p1: Coordinate, p2: Coordinate, rect: Bounds): boolean {
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const p = [-dx, dx, -dy, dy];
-    const q = [
-        p1.x - rect.x,
-        rect.x + rect.width - p1.x,
-        p1.y - rect.y,
-        rect.y + rect.height - p1.y,
-    ];
-    let t0 = 0;
-    let t1 = 1;
-    for (let i = 0; i < 4; i++) {
-        if (p[i] === 0) {
-            if (q[i]! < 0) return false;
-            continue;
-        }
-        const r = q[i]! / p[i]!;
-        if (p[i]! < 0) t0 = Math.max(t0, r);
-        else t1 = Math.min(t1, r);
-        if (t0 > t1) return false;
-    }
-    return t1 > t0;
-}
-
-function insetBounds(b: Bounds, inset: number): Bounds {
-    return {x: b.x + inset, y: b.y + inset, width: b.width - inset * 2, height: b.height - inset * 2};
-}
 
 function rectsOverlap(a: Bounds, b: Bounds): boolean {
     return a.x < b.x + b.width

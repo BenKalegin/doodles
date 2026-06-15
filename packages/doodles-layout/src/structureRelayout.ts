@@ -921,6 +921,13 @@ function applyCrossClusterExitFace(
         for (const a of outgoing) {
             if (nodeParents[a.tgtNodeId] === srcCluster) continue;
             if (a.srcAlign !== mainOutputSide) continue;
+            // A target sitting (nearly) directly ahead of the main face — e.g. a
+            // cross-cluster successor straight below a TB source — has no side to
+            // favor. Switching to a perpendicular face makes the router step out
+            // to the cluster's outer edge and double back across the source,
+            // slicing through it. Keep the main face; the bottom/right fan-out
+            // separates it from in-cluster siblings via port ratios.
+            if (targetDirectlyAheadOfMainFace(a, srcBounds, vertical)) continue;
             const preferred = perpendicularExitFace(a, vertical);
             const opposite = oppositeFace(preferred);
             if (!blockedFaces.has(preferred)) {
@@ -931,6 +938,31 @@ function applyCrossClusterExitFace(
             // else: both perpendicular faces blocked — keep main face.
         }
     }
+}
+
+/**
+ * True when a TB/BT cross-cluster target's center sits within the source's
+ * horizontal span — i.e. the target is essentially straight below (or above)
+ * the source. The vertical main face's perpendicular faces are Right and Left,
+ * so a side exit steps out to the cluster's outer edge and then doubles back
+ * across the source to reach a target that was never to either side, slicing
+ * through it. Keeping the main (Bottom/Top) face routes cleanly down the
+ * inter-cluster gutter instead.
+ *
+ * Horizontal (LR/RL) layouts are exempt: their perpendicular faces are Top and
+ * Bottom, so switching a directly-ahead edge detours through the row gutter
+ * without re-crossing the source — and that switch is the whole point of this
+ * pass (it keeps cross-cluster edges off the in-cluster chain's face).
+ *
+ * `a.dx` is a center-to-center offset, so the target center lies inside the
+ * source's horizontal span iff |dx| is within half the source width.
+ */
+function targetDirectlyAheadOfMainFace(
+    a: LinkAssignment,
+    srcBounds: { width: number; height: number },
+    vertical: boolean,
+): boolean {
+    return vertical && Math.abs(a.dx) <= srcBounds.width / 2;
 }
 
 function perpendicularExitFace(a: LinkAssignment, vertical: boolean): PortAlignment {

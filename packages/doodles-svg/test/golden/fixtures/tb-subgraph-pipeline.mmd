@@ -1,0 +1,26 @@
+flowchart TB
+  subgraph Edge
+    API[/Upload API<br/>Java Spring Boot/]
+    UI[Operator UI<br/>React]
+  end
+  subgraph Control
+    SF[Step Functions<br/>per-doc DAG]
+    DDB[(DynamoDB<br/>doc_state)]
+    EB[EventBridge<br/>progress events]
+  end
+  subgraph Stages
+    Q2[SQS: convert]
+    Q3[SQS: layout]
+    Q4[SQS: classify]
+    QN[SQS: ...]
+  end
+  API --> S3[(S3<br/>1_input)]
+  API --> SF
+  SF --> Q2
+  Q2 --> L2[Stage 2 worker]
+  L2 --> SF
+  SF --> Q3
+  SF --> DDB
+  SF --> EB
+  EB --> UI
+  EB --> SSE[Client SSE stream]

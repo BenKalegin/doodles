@@ -767,6 +767,40 @@ describe("golden: tb-back-edge-through-cluster", () => {
     });
 });
 
+describe("golden: tb-subgraph-pipeline", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("tb-subgraph-pipeline"); });
+
+    // Reproduces a real TB diagram (document-pipeline architecture) exercising
+    // two fixes:
+    //   1. Loose root-level nodes (S3, Stage 2 worker, Client SSE stream sit in
+    //      no subgraph) must be ranked next to the cluster they connect to, not
+    //      floated to the top layer. Cross-compound edges that touch a loose
+    //      node now synthesize a cluster→node ordering edge (filigreeLayout.ts).
+    //   2. A cross-cluster edge whose target sits almost directly below its TB
+    //      source must keep its main (Bottom) face — switching to a side face
+    //      made the router step out to the cluster edge and double back across
+    //      the source, slicing it (applyCrossClusterExitFace).
+    it("loose root-level nodes are ranked next to their cluster neighbors, not the top row", () => {
+        loaded.L.node("S3").below("Upload API");
+        loaded.L.node("Stage 2 worker").below("SQS: convert");
+        loaded.L.node("Client SSE stream").below("EventBridge");
+    });
+
+    it("no edge slices through a non-endpoint node", () => {
+        loaded.L.edges().noNodeIntersection();
+    });
+
+    it("Step Functions → SQS: convert clears its cluster siblings", () => {
+        loaded.L.edge({fromText: "Step Functions", toText: "SQS: convert"})
+            .doesNotCross("DynamoDB", "EventBridge");
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -791,6 +825,7 @@ describe("golden: fixture inventory", () => {
             "lr-fork-chain-wrap",
             "lr-fork-skip-rank",
             "tb-back-edge-through-cluster",
+            "tb-subgraph-pipeline",
         ]);
         for (const name of fixtureNames) {
             expect(exercised.has(name), `fixture ${name}.mmd has no test block`).toBe(true);

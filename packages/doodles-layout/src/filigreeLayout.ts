@@ -151,7 +151,12 @@ export async function applyFiligreeLayout(
     const topLevelClusterOf = (id: string): string | undefined => {
         if (clusterNodeById[id] && !clusterParents?.[id]) return id;
         const chain = ancestorsOf(id);
-        return chain.length > 0 ? chain[chain.length - 1] : undefined;
+        if (chain.length > 0) return chain[chain.length - 1];
+        // Loose root node (in no cluster): it is itself a top-level child of the
+        // root graph. Returning it — rather than undefined — lets a cross-compound
+        // edge that touches it synthesize an ordering edge, so ELK ranks it next
+        // to the cluster it connects to instead of floating it to the top layer.
+        return id;
     };
     const seenOrderingPairs = new Set<string>();
     for (const link of links) {
