@@ -18,16 +18,51 @@ const COLLINEAR_TOLERANCE_PX = 1;
  * Pure: same input → same output, no side effects, no SVG strings.
  */
 export function routeEdges(diagram: RenderableDoodle, theme: ThemeTokens): EdgeRoute[] {
+    const ctx = buildRoutingContext(diagram);
     const routes: EdgeRoute[] = [];
     for (const el of Object.values(diagram.elements)) {
         if (el?.type !== ElementType.ClassLink) continue;
-        const route = routeEdge(el, diagram, theme);
+        const route = routeEdge(el, diagram, theme, ctx);
         if (route) routes.push(route);
     }
     return routes;
 }
 
-function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens): EdgeRoute | undefined {
+/**
+ * Per-diagram facts the obstacle-aware reroute needs, computed once instead of
+ * rescanning every element for each edge (which would make routing O(E²)):
+ * node interiors to avoid, candidate riser columns, and each source's outgoing
+ * edge count.
+ */
+interface RoutingContext {
+    obstacles: Bounds[];
+    riserColumns: number[];
+    outgoingCount: Map<string, number>;
+}
+
+function buildRoutingContext(diagram: RenderableDoodle): RoutingContext {
+    const obstacles: Bounds[] = [];
+    const columns = new Set<number>();
+    const outgoingCount = new Map<string, number>();
+    for (const el of Object.values(diagram.elements)) {
+        if (el?.type === ElementType.ClassNode) {
+            const b = diagram.nodes[el.id]?.bounds;
+            if (!b) continue;
+            const interior = insetBounds(b, OBSTACLE_INTERIOR_INSET_PX);
+            if (interior.width > 0 && interior.height > 0) obstacles.push(interior);
+            columns.add(b.x - RISER_GAP_MARGIN_PX);
+            columns.add(b.x + b.width + RISER_GAP_MARGIN_PX);
+        } else if (el?.type === ElementType.ClassLink) {
+            const p1 = diagram.elements[(el as {port1: string}).port1];
+            if (!p1) continue;
+            const src = String(p1.nodeId);
+            outgoingCount.set(src, (outgoingCount.get(src) ?? 0) + 1);
+        }
+    }
+    return {obstacles, riserColumns: [...columns], outgoingCount};
+}
+
+function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens, ctx: RoutingContext): EdgeRoute | undefined {
     const endpoints = resolveEndpoints(link, diagram);
     if (!endpoints) return undefined;
     const {sourceNodeId, targetNodeId, from, to, srcAlign, tgtAlign, srcBounds, tgtBounds} = endpoints;
@@ -49,8 +84,8 @@ function routeEdge(link: any, diagram: RenderableDoodle, theme: ThemeTokens): Ed
     const direct = orthogonalRoute(from, to, srcAlign, tgtAlign, srcDetourBounds, tgtDetourBounds);
     // A source with a single outgoing edge has no fan-out to disturb, so the
     // reroute may flip its exit face to reach a shorter clear column.
-    const canFlipExit = outgoingEdgeCount(sourceNodeId, diagram) === 1;
-    const polyline = rerouteAroundObstacles(direct, srcAlign, tgtAlign, srcBounds, tgtBounds, diagram, canFlipExit);
+    const canFlipExit = ctx.outgoingCount.get(sourceNodeId) === 1;
+    const polyline = rerouteAroundObstacles(direct, srcAlign, tgtAlign, srcBounds, tgtBounds, ctx, canFlipExit);
     const label = String(link.text ?? "");
     const base: EdgeRoute = {edgeId: String(link.id), sourceNodeId, targetNodeId, polyline, label};
     if (!label) return base;
@@ -94,12 +129,11 @@ function rerouteAroundObstacles(
     tgtAlign: PortAlignment | undefined,
     srcBounds: Bounds,
     tgtBounds: Bounds,
-    diagram: RenderableDoodle,
+    ctx: RoutingContext,
     canFlipExit: boolean,
 ): Coordinate[] {
     if (!isHorizontalAlignment(srcAlign) || !isHorizontalAlignment(tgtAlign)) return polyline;
-    const obstacles = collectObstacleInteriors(diagram);
-    if (!polylineEntersAny(polyline, obstacles)) return polyline;
+    if (!polylineEntersAny(polyline, ctx.obstacles)) return polyline;
 
     // The original endpoints carry the distributed port attach points (their
     // y-ratio separates edges sharing a face). Reuse them whenever the reroute
@@ -111,7 +145,9 @@ function rerouteAroundObstacles(
     const tgtCenterX = tgtBounds.x + tgtBounds.width / 2;
     const srcExitRight = srcAlign === PortAlignment.Right;
     const targetAbove = originalEntry.y < srcCenterY;
-    const exitSides = exitSideOrder(srcExitRight, canFlipExit);
+    // Try the current exit face first (so it wins length ties); a single-out-edge
+    // source may also flip to the opposite face to reach a nearer clear column.
+    const exitSides = canFlipExit ? [srcExitRight, !srcExitRight] : [srcExitRight];
 
     let best: Coordinate[] | undefined;
     let bestLength = Infinity;
@@ -122,9 +158,9 @@ function rerouteAroundObstacles(
         const from = exitRight === srcExitRight
             ? originalExit
             : {x: exitRight ? srcBounds.x + srcBounds.width : srcBounds.x, y: srcCenterY};
-        for (const x of candidateRiserColumns(from, exitRight, tgtCenterX, diagram)) {
+        for (const x of candidateRiserColumns(from, exitRight, tgtCenterX, ctx.riserColumns)) {
             const candidate = buildReroutedPolyline(from, x, tgtBounds, originalEntry, tgtAlign, targetAbove);
-            if (polylineEntersAny(candidate, obstacles)) continue;
+            if (polylineEntersAny(candidate, ctx.obstacles)) continue;
             const length = polylineLength(candidate);
             if (length < bestLength) {
                 bestLength = length;
@@ -135,39 +171,12 @@ function rerouteAroundObstacles(
     return best ?? polyline;
 }
 
-/** Source exit sides to try, current face first so it wins length ties. */
-function exitSideOrder(currentRight: boolean, canFlipExit: boolean): boolean[] {
-    return canFlipExit ? [currentRight, !currentRight] : [currentRight];
-}
-
-function outgoingEdgeCount(sourceNodeId: string, diagram: RenderableDoodle): number {
-    let count = 0;
-    for (const el of Object.values(diagram.elements)) {
-        if (el?.type !== ElementType.ClassLink) continue;
-        const p1 = diagram.elements[(el as {port1: string}).port1];
-        if (p1 && String(p1.nodeId) === sourceNodeId) count++;
-    }
-    return count;
-}
-
 function polylineLength(polyline: readonly Coordinate[]): number {
     let total = 0;
     for (let i = 1; i < polyline.length; i++) {
         total += Math.abs(polyline[i]!.x - polyline[i - 1]!.x) + Math.abs(polyline[i]!.y - polyline[i - 1]!.y);
     }
     return total;
-}
-
-function collectObstacleInteriors(diagram: RenderableDoodle): Bounds[] {
-    const interiors: Bounds[] = [];
-    for (const el of Object.values(diagram.elements)) {
-        if (el?.type !== ElementType.ClassNode) continue;
-        const b = diagram.nodes[el.id]?.bounds;
-        if (!b) continue;
-        const interior = insetBounds(b, OBSTACLE_INTERIOR_INSET_PX);
-        if (interior.width > 0 && interior.height > 0) interiors.push(interior);
-    }
-    return interiors;
 }
 
 function polylineEntersAny(polyline: Coordinate[], obstacles: readonly Bounds[]): boolean {
@@ -182,26 +191,19 @@ function polylineEntersAny(polyline: Coordinate[], obstacles: readonly Bounds[])
 }
 
 /**
- * Candidate riser columns: every node's left/right edge offset outward by the
- * gutter margin, restricted to the source's exit side, ordered by proximity to
- * the target so the riser enters as close to the target column as it can.
+ * From the diagram's precomputed riser columns (every node's left/right edge
+ * offset outward by the gutter margin), keep those on the source's exit side
+ * and order them by proximity to the target so the riser enters as close to the
+ * target column as it can.
  */
 function candidateRiserColumns(
     from: Coordinate,
     exitRight: boolean,
     tgtCenterX: number,
-    diagram: RenderableDoodle,
+    riserColumns: readonly number[],
 ): number[] {
-    const columns = new Set<number>();
-    for (const el of Object.values(diagram.elements)) {
-        if (el?.type !== ElementType.ClassNode) continue;
-        const b = diagram.nodes[el.id]?.bounds;
-        if (!b) continue;
-        columns.add(b.x - RISER_GAP_MARGIN_PX);
-        columns.add(b.x + b.width + RISER_GAP_MARGIN_PX);
-    }
     const limit = exitRight ? from.x + RISER_GAP_MARGIN_PX : from.x - RISER_GAP_MARGIN_PX;
-    return [...columns]
+    return riserColumns
         .filter(x => (exitRight ? x >= limit : x <= limit))
         .sort((a, b) => Math.abs(a - tgtCenterX) - Math.abs(b - tgtCenterX));
 }
@@ -226,17 +228,20 @@ function buildReroutedPolyline(
 ): Coordinate[] {
     const tgtLeft = tgtBounds.x;
     const tgtRight = tgtBounds.x + tgtBounds.width;
-    const tgtCenterY = tgtBounds.y + tgtBounds.height / 2;
-    if (x <= tgtLeft) {
-        const entry = tgtAlign === PortAlignment.Left ? originalEntry : {x: tgtLeft, y: tgtCenterY};
-        return [from, {x, y: from.y}, {x, y: entry.y}, entry];
+    if (x > tgtLeft && x < tgtRight) {
+        // Column within the target's x-span: drop straight into its near
+        // horizontal face (Bottom when the target sits above the source).
+        const entryY = targetAbove ? tgtBounds.y + tgtBounds.height : tgtBounds.y;
+        return [from, {x, y: from.y}, {x, y: entryY}];
     }
-    if (x >= tgtRight) {
-        const entry = tgtAlign === PortAlignment.Right ? originalEntry : {x: tgtRight, y: tgtCenterY};
-        return [from, {x, y: from.y}, {x, y: entry.y}, entry];
-    }
-    const entryY = targetAbove ? tgtBounds.y + tgtBounds.height : tgtBounds.y;
-    return [from, {x, y: from.y}, {x, y: entryY}];
+    // Column to one side: enter that horizontal face, reusing the original
+    // (port-distributed) attach point when the face is unchanged.
+    const onLeft = x <= tgtLeft;
+    const keepsFace = onLeft ? tgtAlign === PortAlignment.Left : tgtAlign === PortAlignment.Right;
+    const entry = keepsFace
+        ? originalEntry
+        : {x: onLeft ? tgtLeft : tgtRight, y: tgtBounds.y + tgtBounds.height / 2};
+    return [from, {x, y: from.y}, {x, y: entry.y}, entry];
 }
 
 interface ResolvedEndpoints {
