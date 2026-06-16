@@ -35,6 +35,9 @@ importers:
       '@benkalegin/doodles-svg':
         specifier: workspace:*
         version: link:../doodles-svg
+      '@benkalegin/doodles-vega':
+        specifier: workspace:*
+        version: link:../doodles-vega
 
   packages/doodles-bpmn:
     dependencies:

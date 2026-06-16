@@ -34,7 +34,8 @@
     "@benkalegin/doodles-mermaid": "workspace:*",
     "@benkalegin/doodles-layout": "workspace:*",
     "@benkalegin/doodles-svg": "workspace:*",
-    "@benkalegin/doodles-bpmn": "workspace:*"
+    "@benkalegin/doodles-bpmn": "workspace:*",
+    "@benkalegin/doodles-vega": "workspace:*"
   },
   "description": "Single-import facade for doodles: parse, layout, render.",
   "license": "MIT",
