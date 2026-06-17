@@ -129,6 +129,26 @@ needs_release() {
   [ "$ahead" -gt 0 ]
 }
 
+# Install with retries. A package published moments earlier (an upstream we just
+# released this run) can take a few seconds to become resolvable on GH Packages,
+# so the consumer's install transiently ENOENT/404s and — under `set -e` — would
+# abort the whole release mid-cascade. Retry a few times before giving up.
+INSTALL_RETRIES=5
+INSTALL_RETRY_DELAY=6
+install_with_retry() {
+  local attempt=1
+  while [ "$attempt" -le "$INSTALL_RETRIES" ]; do
+    if NODE_AUTH_TOKEN="$(gh auth token)" pnpm install 2>&1 | tail -3; then
+      return 0
+    fi
+    echo "  ↳ install attempt $attempt/$INSTALL_RETRIES failed (registry propagation lag?) — retrying in ${INSTALL_RETRY_DELAY}s"
+    sleep "$INSTALL_RETRY_DELAY"
+    attempt=$((attempt + 1))
+  done
+  echo "✗ install still failing after $INSTALL_RETRIES attempts"
+  return 1
+}
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 declare -A RELEASED
@@ -171,8 +191,8 @@ for repo in "${REPOS_ORDER[@]}"; do
     echo "  ↳ bumped $up_name → ^$up_v"
   done
 
-  # 3. Install (needs token for our scoped registry)
-  NODE_AUTH_TOKEN="$(gh auth token)" pnpm install 2>&1 | tail -3
+  # 3. Install (needs token for our scoped registry; retried for propagation lag)
+  install_with_retry
 
   # 4. Build + test
   pnpm -r build 2>&1 | tail -3
@@ -224,7 +244,7 @@ done
 
 if [ ${#bumped[@]} -gt 0 ]; then
   echo "━━━ axonize: bumping ${bumped[*]} ━━━"
-  NODE_AUTH_TOKEN="$(gh auth token)" pnpm install 2>&1 | tail -3
+  install_with_retry
   git add package.json pnpm-lock.yaml
   git commit -m "Bump deps: ${bumped[*]}"
   [ "$PUSH" = "1" ] && git push

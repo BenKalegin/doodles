@@ -66,7 +66,7 @@ Each repo's `.npmrc` references `${NODE_AUTH_TOKEN}` for both publish and instal
 
 - **Tests fail mid-release**: the script aborts after the version bump but before commit. Revert with `cd <repo> && git restore package.json packages/*/package.json` (and `pnpm-lock.yaml` if pnpm install ran).
 - **`pnpm publish` returns 409 (version exists)**: someone (or a previous interrupted run) already published that version. Bump again with a higher level, or set the version explicitly by editing `package.json`s.
-- **Consumer install fails after publish**: usually means a registry propagation delay. Retry `pnpm install` in that consumer after a few seconds.
+- **Consumer install fails after publish**: usually a registry propagation delay (a just-published upstream isn't resolvable yet). The script now auto-retries each install up to `INSTALL_RETRIES` times with `INSTALL_RETRY_DELAY`s between attempts (`install_with_retry`), so a transient lag no longer aborts the cascade. If it still fails after all retries, the publish genuinely didn't land — check `gh` auth / the package page.
 
 ## Do NOT use this skill for
 
