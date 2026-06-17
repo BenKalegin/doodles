@@ -124,9 +124,12 @@ needs_release() {
   if ! git rev-parse "$tag" >/dev/null 2>&1; then
     return 0  # no tag yet → treat as needing release
   fi
-  local ahead
-  ahead=$(git rev-list --count "$tag..HEAD" 2>/dev/null || echo 0)
-  [ "$ahead" -gt 0 ]
+  # Count only commits that touch publishable code. Tooling/CI-only changes
+  # (.claude/ skills, .github/ workflows) shouldn't trigger a package republish
+  # of byte-identical library code.
+  local changed
+  changed=$(git diff --name-only "$tag..HEAD" 2>/dev/null | grep -vE '^(\.claude/|\.github/)' | head -1 || true)
+  [ -n "$changed" ]
 }
 
 # Install with retries. A package published moments earlier (an upstream we just
