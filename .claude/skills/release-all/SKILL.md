@@ -20,7 +20,7 @@ The script walks this order. For each upstream repo, it:
 3. Bumps any upstream deps just released earlier in the run (e.g. doodles' `@benkalegin/filigree-api` if filigree got a new version this run).
 4. Installs, builds, tests.
 5. Commits + tags (`vX.Y.Z` for filigree/doodles, `editor-vX.Y.Z` for clouddiagram) + pushes.
-6. Publishes packages to GH Packages using `gh auth token` as `NODE_AUTH_TOKEN`.
+6. Publishes packages to GH Packages using `gh auth token` as `NODE_AUTH_TOKEN` — **except clouddiagram-editor**, which is published by its own GitHub Actions workflow (`.github/workflows/publish.yml`) on the `editor-v*` tag this script pushes. The script only pushes the tag for clouddiagram; publishing it here too would 409-race the CI job.
 
 After all publishers run, axonize gets the new dep versions, `pnpm install`, and a commit + push.
 

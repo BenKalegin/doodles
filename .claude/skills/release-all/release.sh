@@ -209,13 +209,20 @@ for repo in "${REPOS_ORDER[@]}"; do
   # 6. Push + publish
   if [ "$PUSH" = "1" ]; then
     git push origin HEAD "$tag"
-    filter="${PUBLISH_FILTER[$repo]}"
-    if [ -n "$filter" ]; then
-      NODE_AUTH_TOKEN="$(gh auth token)" \
-        pnpm -r --filter "$filter" publish --no-git-checks --access public 2>&1 | grep -E "^\+ @benkalegin|error" || true
+    if [ "$repo" = "clouddiagram" ]; then
+      # clouddiagram-editor is published by its own GitHub Actions workflow
+      # (.github/workflows/publish.yml) on the editor-v* tag we just pushed.
+      # Publishing here too would race it and 409. Let CI own the publish.
+      echo "  ↳ tag pushed — clouddiagram-editor publishes via its GitHub Actions workflow, not here"
     else
-      NODE_AUTH_TOKEN="$(gh auth token)" \
-        pnpm publish --no-git-checks --access public 2>&1 | grep -E "^\+ @benkalegin|error" || true
+      filter="${PUBLISH_FILTER[$repo]}"
+      if [ -n "$filter" ]; then
+        NODE_AUTH_TOKEN="$(gh auth token)" \
+          pnpm -r --filter "$filter" publish --no-git-checks --access public 2>&1 | grep -E "^\+ @benkalegin|error" || true
+      else
+        NODE_AUTH_TOKEN="$(gh auth token)" \
+          pnpm publish --no-git-checks --access public 2>&1 | grep -E "^\+ @benkalegin|error" || true
+      fi
     fi
   else
     echo "  (PUSH_REMOTES=0 — skipping git push + pnpm publish)"
