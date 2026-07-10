@@ -1031,7 +1031,21 @@ interface PortSortInfo {
     /** Target's center coord along the face axis — final tiebreaker inside a
      *  (directionGroup, pivotDistance) bucket on vertical faces. */
     targetPerpCoord: number;
+    /** True when the target's center lines up with the source's center along
+     *  the face's cross axis — i.e. an edge that could run perpendicularly
+     *  straight (straight-down for a Bottom face, straight-across for a Right
+     *  face). Such an edge is pinned to the face centre so the pipeline spine
+     *  stays straight; siblings distribute around it. */
+    axisAligned: boolean;
 }
+
+// A target counts as column/row-aligned with the source (eligible for the
+// straight centre port) only when their centres match within this slack —
+// layered placement aligns columns exactly, so the tolerance is tiny.
+const PORT_AXIS_ALIGN_TOLERANCE_PX = 2;
+
+// Ratio of the face centre — the spine port sits here so it runs straight.
+const FACE_CENTRE_RATIO = 50;
 
 function distributePortsAlongSides(
     diagram: Diagram & DiagramInternal,
@@ -1079,13 +1093,40 @@ function distributePortsAlongSides(
         ));
         sortInfos.sort(compareForFace(alignment));
         const n = sortInfos.length;
+        const ratios = portRatiosForFace(sortInfos);
         for (let i = 0; i < n; i++) {
-            const ratio = ((i + 1) / (n + 1)) * 100;
-            const pid = sortInfos[i]!.portId;
-            result[pid] = {...result[pid], edgePosRatio: ratio};
+            result[sortInfos[i]!.portId] = {...result[sortInfos[i]!.portId], edgePosRatio: ratios[i]!};
         }
     }
     return result;
+}
+
+/**
+ * edgePosRatio (0–100) per port along a shared face, in sorted order. With no
+ * straight-eligible edge the ports spread evenly across the face. When exactly
+ * one edge is axis-aligned (a spine that could run perpendicularly straight),
+ * it is pinned to the face centre and the siblings distribute evenly within
+ * the half on their own side, so the spine stays a straight perpendicular line
+ * instead of every edge doglegging off a fractional port.
+ *
+ * The sort places the aligned port between the two direction groups (it goes
+ * neither left nor right of centre), so `a` cleanly splits the sorted list
+ * into a "before" half and an "after" half.
+ */
+function portRatiosForFace(sortInfos: readonly PortSortInfo[]): number[] {
+    const n = sortInfos.length;
+    const alignedIndices = sortInfos.flatMap((s, i) => (s.axisAligned ? [i] : []));
+    if (alignedIndices.length !== 1) {
+        return sortInfos.map((_, i) => ((i + 1) / (n + 1)) * 100);
+    }
+    const a = alignedIndices[0]!;
+    const before = a;
+    const after = n - 1 - a;
+    return sortInfos.map((_, i) => {
+        if (i === a) return FACE_CENTRE_RATIO;
+        if (i < a) return FACE_CENTRE_RATIO * ((i + 1) / (before + 1));
+        return FACE_CENTRE_RATIO + FACE_CENTRE_RATIO * ((i - a) / (after + 1));
+    });
 }
 
 function buildPortSortInfo(
@@ -1100,7 +1141,7 @@ function buildPortSortInfo(
     const tgtId = otherEndpointOf[portId];
     const tgtBounds = tgtId ? nodes[tgtId]?.bounds : undefined;
     if (!tgtId || !tgtBounds) {
-        return {portId, directionGroup: 0, pivotDistance: 0, angle: 0, targetPerpCoord: 0};
+        return {portId, directionGroup: 0, pivotDistance: 0, angle: 0, targetPerpCoord: 0, axisAligned: false};
     }
     const srcCenterX = srcBounds.x + srcBounds.width / 2;
     const srcCenterY = srcBounds.y + srcBounds.height / 2;
@@ -1120,7 +1161,13 @@ function buildPortSortInfo(
         : 0;
     const angle = Math.atan2(tgtCenterY - srcCenterY, tgtCenterX - srcCenterX);
     const targetPerpCoord = vertical ? tgtCenterY : tgtCenterX;
-    return {portId, directionGroup, pivotDistance, angle, targetPerpCoord};
+    // "Straight" means the edge leaves perpendicular to the face and lands
+    // dead-centre on the target: for a horizontal face (Top/Bottom) that needs
+    // matching x, for a vertical face (Left/Right) matching y.
+    const axisAligned = vertical
+        ? Math.abs(tgtCenterY - srcCenterY) <= PORT_AXIS_ALIGN_TOLERANCE_PX
+        : Math.abs(tgtCenterX - srcCenterX) <= PORT_AXIS_ALIGN_TOLERANCE_PX;
+    return {portId, directionGroup, pivotDistance, angle, targetPerpCoord, axisAligned};
 }
 
 function estimatePivotX(

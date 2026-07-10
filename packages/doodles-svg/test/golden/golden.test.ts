@@ -838,6 +838,22 @@ describe("golden: tb-back-edge-stacked-column", () => {
             .doesNotCross("Duchess");
     });
 
+    // Rule: docs/layout-rules/fork-straight-spine-port.md
+    // Cheshire has two Bottom-face out-edges. Dormouse is directly below in the
+    // same column, so its port is pinned to the face centre (50%) and the edge
+    // runs straight down (2 points, no dogleg); Cheshire → Duchess distributes
+    // to the side. Before the rule both edges left fractional ports (33%/67%)
+    // and doglegged.
+    it("aligned child edge (Cheshire → Dormouse) runs straight down from the face centre", () => {
+        loaded.L.edge({fromText: "Cheshire", toText: "Dormouse"}).polylineLengthAtMost(2);
+    });
+
+    it("side sibling edge (Cheshire → Duchess) still doglegs to its column", () => {
+        // The non-aligned sibling is not straight — it distributes off-centre
+        // and elbows toward Duchess. (Guards against pinning everything to 50%.)
+        loaded.L.edge({fromText: "Cheshire", toText: "Duchess"}).hasSourceAlignment(PortAlignment.Bottom);
+    });
+
     it("svg snapshot", () => {
         expect(loaded.svg).toMatchSnapshot();
     });
