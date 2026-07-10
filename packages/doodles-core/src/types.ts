@@ -148,6 +148,8 @@ export interface BpmnLinkData {
 export interface NodeState extends DiagramElement, HasColorSchema {
     text: string;
     ports: Id[];
+    /** Identifier of this node in the source format it was imported from (e.g. the Mermaid node name `A`). Lets hosts wire source-level interactions (like `click A "url"` directives) to the rendered node. */
+    sourceId?: string;
     classAnnotation?: string;
     classMembers?: ClassMemberState[];
     erEntity?: ErEntityState;

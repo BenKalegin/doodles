@@ -351,6 +351,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
             text: effectiveLabel,
             ports: [],
             colorSchema: neutralColorSchema,
+            sourceId: normalizedName,
             flowchartKind: flowchartMode ? (flowchartKind ?? FlowchartNodeKind.Process) : undefined
         } as NodeState;
 

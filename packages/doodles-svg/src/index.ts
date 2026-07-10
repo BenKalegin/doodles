@@ -141,7 +141,13 @@ function renderNode(el: any, b: Bounds, theme: ThemeTokens): string {
 
     const shape = nodeShape(kind, b, fill, stroke);
     const text = renderNodeText(el, b, theme, textColor);
-    return shape + text;
+    const body = shape + text;
+
+    // Expose the source-format node id (e.g. the Mermaid node name) so hosts can
+    // wire source-level interactions like `click A "url"` to the rendered node.
+    const sourceId = el.sourceId;
+    if (typeof sourceId !== "string" || sourceId.length === 0) return body;
+    return `<g data-node-id="${xmlEscape(sourceId)}">${body}</g>`;
 }
 
 // Node outline thickness — matches edge stroke so the diagram reads as a
