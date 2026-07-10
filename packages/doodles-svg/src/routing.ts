@@ -520,6 +520,14 @@ function sameFaceDetour(
 ): Coordinate[] {
     if (face === PortAlignment.Right) {
         const outerX = Math.max(srcBounds.x + srcBounds.width, tgtBounds.x + tgtBounds.width) + SAME_FACE_DETOUR_PAD;
+        // Vertically stacked (same column): the riser just outside the shared
+        // right edge already clears both boxes, so drop straight to the
+        // target's port height and enter perpendicularly. Mirrors the Top/
+        // Bottom horizontal-gap case — only the horizontally-separated (side
+        // by side) case needs the loop up over / down under the whole stack.
+        if (verticalStack(from, to, srcBounds, tgtBounds)) {
+            return [from, {x: outerX, y: from.y}, {x: outerX, y: to.y}, to];
+        }
         const aboveY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
         const belowY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
         const sideY = pickDetourSide(from.y, to.y, aboveY, belowY);
@@ -527,6 +535,9 @@ function sameFaceDetour(
     }
     if (face === PortAlignment.Left) {
         const outerX = Math.min(srcBounds.x, tgtBounds.x) - SAME_FACE_DETOUR_PAD;
+        if (verticalStack(from, to, srcBounds, tgtBounds)) {
+            return [from, {x: outerX, y: from.y}, {x: outerX, y: to.y}, to];
+        }
         const aboveY = Math.min(srcBounds.y, tgtBounds.y) - SAME_FACE_DETOUR_PAD;
         const belowY = Math.max(srcBounds.y + srcBounds.height, tgtBounds.y + tgtBounds.height) + SAME_FACE_DETOUR_PAD;
         const sideY = pickDetourSide(from.y, to.y, aboveY, belowY);
@@ -578,6 +589,18 @@ function pickDetourSide(from: number, to: number, optionA: number, optionB: numb
     const costA = Math.abs(optionA - from) + Math.abs(to - optionA);
     const costB = Math.abs(optionB - from) + Math.abs(to - optionB);
     return costA <= costB ? optionA : optionB;
+}
+
+/**
+ * For a same-face detour on a horizontal (Left/Right) face, are the two nodes
+ * stacked in one column rather than sitting side by side? True when their port
+ * y-separation exceeds their combined half-height. A stacked pair only needs a
+ * tight riser just outside the shared face to clear both boxes; a side-by-side
+ * pair needs the full loop above/below the stack. This is the vertical mirror
+ * of the `horizontalGap` test the Top/Bottom branches use.
+ */
+function verticalStack(from: Coordinate, to: Coordinate, srcBounds: Bounds, tgtBounds: Bounds): boolean {
+    return Math.abs(from.y - to.y) > (srcBounds.height + tgtBounds.height) / 2;
 }
 
 function isVerticalAlignment(a: PortAlignment | undefined): boolean {

@@ -801,6 +801,48 @@ describe("golden: tb-subgraph-pipeline", () => {
     });
 });
 
+describe("golden: tb-back-edge-stacked-column", () => {
+    let loaded: Loaded;
+    beforeAll(async () => { loaded = await loadFixture("tb-back-edge-stacked-column"); });
+
+    // Rule: docs/layout-rules/back-edge-stacked-column-riser.md
+    // Cheshire ↔ Dormouse form a 2-cycle; the downstream pipeline aligns them
+    // in one column with Duchess as a right sibling, so the back-edge gets a
+    // Right face on both ends. When two same-face nodes are stacked vertically,
+    // the return path only needs a tight riser just outside the shared right
+    // edge — NOT a loop up over the top of both boxes, which overshoots above
+    // the upper node and slides down its border into the port.
+    it("Cheshire and Dormouse are stacked in one column", () => {
+        loaded.L.nodes("Cheshire", "Dormouse").sameColumn();
+        loaded.L.node("Dormouse").below("Cheshire");
+    });
+
+    it("Dormouse → Cheshire back-edge uses Right faces on both ends", () => {
+        loaded.L.edge({fromText: "Dormouse", toText: "Cheshire"})
+            .hasSourceAlignment(PortAlignment.Right)
+            .hasTargetAlignment(PortAlignment.Right);
+    });
+
+    it("back-edge is a tight riser (4 points), not a loop over the stack", () => {
+        loaded.L.edge({fromText: "Dormouse", toText: "Cheshire"})
+            .polylineLengthAtMost(4);
+    });
+
+    it("back-edge enters the target perpendicular to the Right face, not sliding down its border", () => {
+        loaded.L.edge({fromText: "Dormouse", toText: "Cheshire"})
+            .entersTargetPerpendicularTo(PortAlignment.Right);
+    });
+
+    it("back-edge does not slice the right sibling", () => {
+        loaded.L.edge({fromText: "Dormouse", toText: "Cheshire"})
+            .doesNotCross("Duchess");
+    });
+
+    it("svg snapshot", () => {
+        expect(loaded.svg).toMatchSnapshot();
+    });
+});
+
 describe("golden: fixture inventory", () => {
     it("every .mmd fixture is exercised by a describe block", () => {
         const exercised = new Set([
@@ -825,6 +867,7 @@ describe("golden: fixture inventory", () => {
             "lr-fork-chain-wrap",
             "lr-fork-skip-rank",
             "tb-back-edge-through-cluster",
+            "tb-back-edge-stacked-column",
             "tb-subgraph-pipeline",
         ]);
         for (const name of fixtureNames) {

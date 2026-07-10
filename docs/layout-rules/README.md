@@ -19,6 +19,7 @@ Skim this index, click into the rule that matches what you're seeing. Each rule 
 - [tb-back-edge-side-gutter](./tb-back-edge-side-gutter.md) — TB/BT mirror: back-edges route through the gutter beside the source column, never through the interior of the cluster. Prevents back-edges from slicing through intermediate nodes whose column sits between source and target.
 - [fork-cross-row-perpendicular-exit](./fork-cross-row-perpendicular-exit.md) — Forward edges from a fork that cross to a different row exit the source's cross-axis face (Bottom/Top), not the in-flow face. Keeps the in-row branch on its natural face and lets port distribution clear incoming back-edges.
 - [route-around-intermediate-node](./route-around-intermediate-node.md) — A same-row forward edge that would slice through a non-endpoint node detours through the gutter below the source row (Bottom → Top). Catches the decision-diamond-with-re-merge pattern where the skip-rank branch passes through the intermediate column.
+- [back-edge-stacked-column-riser](./back-edge-stacked-column-riser.md) — A same-face back-edge between two nodes stacked in one column returns via a tight riser just outside the shared face, not a loop up over the top of the stack. Kills the tall stray riser a "gleaning loop" 2-cycle produced beside a TB pipeline.
 
 ## Conventions
 
