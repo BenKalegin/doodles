@@ -63,7 +63,8 @@ export async function applyFiligreeLayout(
     clusters?: { [clusterId: string]: ClusterDef },
     nodeParents?: { [nodeId: string]: string },
     clusterParents?: { [clusterId: string]: string },
-    orderHints?: OrderHint[]
+    orderHints?: OrderHint[],
+    flow?: readonly (readonly string[])[]
 ): Promise<{ [clusterId: string]: LayoutNodeBounds }> {
     const clusterIds = clusters ? Object.keys(clusters) : [];
     // Drop ids from `nodes` that are also cluster ids — some callers re-pass
@@ -158,6 +159,31 @@ export async function applyFiligreeLayout(
         // ranks it next to the cluster it connects to instead of floating it up.
         return chain.length > 0 ? chain[chain.length - 1] : id;
     };
+    const unorderedKey = (a: string, b: string): string => (a < b ? `${a}\0${b}` : `${b}\0${a}`);
+    const rootChildIds = new Set((childrenOf[ROOT] ?? []).map(n => n.id));
+
+    // Resolve author flow spines to ordered pairs of *top-level* entities (the
+    // root children filigree actually ranks). A flow pair is authoritative: it
+    // dictates the layer order for its pair and suppresses any auto ordering
+    // edge the structural pass would otherwise synthesize for the same pair in
+    // either direction (which is how a declared spine overrides a back-edge).
+    const flowOrderedPairs: Array<[string, string]> = [];
+    const flowCoveredPairs = new Set<string>();
+    const seenFlowPairs = new Set<string>();
+    for (const spine of flow ?? []) {
+        for (let i = 1; i < spine.length; i++) {
+            const a = topLevelClusterOf(spine[i - 1]!);
+            const b = topLevelClusterOf(spine[i]!);
+            if (!a || !b || a === b) continue;
+            if (!rootChildIds.has(a) || !rootChildIds.has(b)) continue;
+            const directed = `${a}\0${b}`;
+            if (seenFlowPairs.has(directed)) continue;
+            seenFlowPairs.add(directed);
+            flowOrderedPairs.push([a, b]);
+            flowCoveredPairs.add(unorderedKey(a, b));
+        }
+    }
+
     const seenOrderingPairs = new Set<string>();
     for (const link of links) {
         if (!nodes[link.source] || !nodes[link.target]) continue;
@@ -165,6 +191,10 @@ export async function applyFiligreeLayout(
         const srcTop = topLevelClusterOf(link.source);
         const tgtTop = topLevelClusterOf(link.target);
         if (!srcTop || !tgtTop || srcTop === tgtTop) continue;
+        // A declared flow spine owns this pair's ordering — don't let the
+        // structural edge compete (it would form a cycle the layerer breaks
+        // arbitrarily).
+        if (flowCoveredPairs.has(unorderedKey(srcTop, tgtTop))) continue;
         const key = `${srcTop}\0${tgtTop}`;
         if (seenOrderingPairs.has(key)) continue;
         seenOrderingPairs.add(key);
@@ -172,6 +202,14 @@ export async function applyFiligreeLayout(
             id: `order_${srcTop}_${tgtTop}`,
             sources: [srcTop],
             targets: [tgtTop]
+        });
+    }
+
+    for (const [a, b] of flowOrderedPairs) {
+        (edgesByContainer[ROOT] ??= []).push({
+            id: `flow_${a}_${b}`,
+            sources: [a],
+            targets: [b]
         });
     }
 

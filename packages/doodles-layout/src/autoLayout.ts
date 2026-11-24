@@ -41,9 +41,10 @@ export function applyAutoLayout(
     clusters?: { [clusterId: string]: ClusterDef },
     nodeParents?: { [nodeId: string]: string },
     clusterParents?: { [clusterId: string]: string },
-    orderHints?: OrderHint[]
+    orderHints?: OrderHint[],
+    flow?: readonly (readonly string[])[]
 ): Promise<{ [clusterId: string]: LayoutNodeBounds }> {
-    return applyFiligreeLayout(nodes, links, hints, clusters, nodeParents, clusterParents, orderHints);
+    return applyFiligreeLayout(nodes, links, hints, clusters, nodeParents, clusterParents, orderHints, flow);
 }
 
 const DISPLAY_PADDING = 80;

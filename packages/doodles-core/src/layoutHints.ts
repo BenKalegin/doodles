@@ -24,4 +24,13 @@ export interface LayoutHints {
      * large number to disable wrapping.
      */
     maxColsPerRow?: number;
+    /**
+     * Author-declared flow spines, as raw ids referencing the source language's
+     * own identifiers (Mermaid node / subgraph ids). Each spine is an ordered
+     * list; the layout forces each id to an earlier rank (layer) than the next,
+     * overriding the structural rank the engine would otherwise pick. Importers
+     * produce this from the `flow:` frontmatter key; the layout layer resolves
+     * the raw ids to internal element ids before use.
+     */
+    flow?: readonly (readonly string[])[];
 }

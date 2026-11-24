@@ -744,6 +744,20 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
         clusterDefs[sid] = {label};
     }
 
+    // Resolve author flow spines (raw Mermaid ids) to internal entity ids:
+    // node source ids map through nodeMap; subgraph ids are their own cluster
+    // ids. Unresolvable ids are dropped; a spine survives only with ≥2 ids.
+    const resolvedFlow: string[][] = [];
+    for (const spine of layoutHints.flow ?? []) {
+        const resolved: string[] = [];
+        for (const rawId of spine) {
+            const id = rawId.trim();
+            if (nodeMap[id]) resolved.push(nodeMap[id]!);
+            else if (clusterDefs[id]) resolved.push(id);
+        }
+        if (resolved.length >= 2) resolvedFlow.push(resolved);
+    }
+
     // For flowcharts, normalize node widths within each compound to the
     // widest member. Filigree's Brandes-Köpf placer pins same-column nodes
     // by their left edge; varying widths leave centers misaligned, which
@@ -777,7 +791,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
         }
     }
 
-    const clusterBoundsById = await applyAutoLayout(nodes, layoutEdges, layoutHints, clusterDefs, nodeParents, clusterParents, orderHints);
+    const clusterBoundsById = await applyAutoLayout(nodes, layoutEdges, layoutHints, clusterDefs, nodeParents, clusterParents, orderHints, resolvedFlow);
 
     const clusterMembers: { [clusterId: string]: string[] } = {};
     for (const [nodeId, clusterId] of Object.entries(nodeParents)) {
@@ -840,6 +854,7 @@ export async function importMermaidStructureDiagram(baseDiagram: Diagram, conten
             offset: {x: 0, y: 0}
         }
     };
+    if (resolvedFlow.length > 0) result.layoutFlow = resolvedFlow;
 
     if (options?.out) {
         const o = options.out;

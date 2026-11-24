@@ -23,4 +23,12 @@ export const defaultDiagramDisplay: DiagramDisplay = {
 export interface Diagram extends ElementRef {
     title?: string;
     display: DiagramDisplay;
+    /**
+     * Author-declared flow spines resolved to internal element ids. Each spine
+     * is an ordered list of node / cluster ids the layout should rank in order
+     * (earlier id → earlier layer), overriding the structural rank. Produced by
+     * importers from the `flow:` frontmatter key (after resolving the raw source
+     * ids); consumed by doodles-layout's re-layout pass.
+     */
+    layoutFlow?: readonly (readonly string[])[];
 }

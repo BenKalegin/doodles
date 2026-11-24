@@ -82,7 +82,7 @@ export async function relayoutStructure<T extends Diagram>(
     }
 
     const clusterBoundsById = await applyFiligreeLayout(
-        layoutNodes, edges, resolvedHints, clusters, nodeParents, clusterParents, orderHints
+        layoutNodes, edges, resolvedHints, clusters, nodeParents, clusterParents, orderHints, dia.layoutFlow
     );
 
     const newNodes: DiagramInternal["nodes"] = {...dia.nodes};

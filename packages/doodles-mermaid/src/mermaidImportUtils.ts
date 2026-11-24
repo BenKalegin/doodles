@@ -61,12 +61,24 @@ const RANK_SPACING_LINE_RE = /^ranksep\s*:\s*(\d+)/i;
 const RANK_SPACING_FLOW_RE = /^rankspacing\s*:\s*(\d+)/i;
 const NODE_SPACING_LINE_RE = /^nodesep\s*:\s*(\d+)/i;
 const NODE_SPACING_FLOW_RE = /^nodespacing\s*:\s*(\d+)/i;
+// A declared flow spine, e.g. `flow: A > B > C`, nested under `doodles:` or
+// written flat as `doodles.flow:` / `flow:`. The `%% ` comment form is also
+// accepted since those lines are otherwise stripped before layout.
+const FLOW_LINE_RE = /^(?:doodles\s*\.\s*)?flow\s*:\s*(.+)$/i;
+
+function parseFlowSpine(value: string): string[] {
+    return value
+        .split(">")
+        .map(id => id.trim())
+        .filter(id => id.length > 0);
+}
 
 /**
  * Extract layout hints from a Mermaid source. Reads:
  *  - direction from the `flowchart`/`graph` header line (e.g. `flowchart TD`)
  *  - rankSep / nodeSep from frontmatter `config.flowchart.rankSpacing|nodeSpacing`
  *    or top-level `ranksep|nodesep`
+ *  - `flow:` spines from frontmatter (ordered ids separated by `>`)
  */
 export function parseMermaidLayoutHints(content: string): LayoutHints {
     const hints: LayoutHints = {};
@@ -74,6 +86,7 @@ export function parseMermaidLayoutHints(content: string): LayoutHints {
     if (direction) hints.direction = direction;
 
     const frontmatter = readFrontmatterLines(content);
+    const flow: string[][] = [];
     for (const line of frontmatter) {
         const rankFlow = line.match(RANK_SPACING_FLOW_RE);
         if (rankFlow) hints.rankSep = Number(rankFlow[1]);
@@ -83,7 +96,13 @@ export function parseMermaidLayoutHints(content: string): LayoutHints {
         if (nodeFlow) hints.nodeSep = Number(nodeFlow[1]);
         const nodeTop = line.match(NODE_SPACING_LINE_RE);
         if (nodeTop && hints.nodeSep === undefined) hints.nodeSep = Number(nodeTop[1]);
+        const flowMatch = line.match(FLOW_LINE_RE);
+        if (flowMatch) {
+            const spine = parseFlowSpine(flowMatch[1]!);
+            if (spine.length >= 2) flow.push(spine);
+        }
     }
+    if (flow.length > 0) hints.flow = flow;
 
     return hints;
 }
